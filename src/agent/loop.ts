@@ -6,6 +6,7 @@ import { buildSystemPrompt } from './prompt';
 import { getToolDefinitions, dispatchTool, type ToolDeps } from './tools';
 import { chunksSearch } from '../services/search';
 import { log } from '../services/logger';
+import { config } from '../config';
 
 export type AgentDeps = {
   d1: D1Database;
@@ -15,7 +16,7 @@ export type AgentDeps = {
   serperApiKey: string;
 };
 
-const MAX_ROUNDS = 30;
+const MAX_ROUNDS = config.agent.maxRounds;
 
 function sseSend(controller: ReadableStreamDefaultController, event: Record<string, unknown>) {
   log.debug('loop:sseSend', 'send', event);
@@ -120,7 +121,7 @@ export class AgentLoop {
 
   private async doRagRetrieval(query: string, userId: number): Promise<string> {
     try {
-      const timeout = new Promise<string>((resolve) => setTimeout(() => { log.warn('loop:doRagRetrieval', 'RAG retrieval timed out after 5s'); resolve(''); }, 5000));
+      const timeout = new Promise<string>((resolve) => setTimeout(() => { log.warn('loop:doRagRetrieval', `RAG retrieval timed out after ${config.agent.ragTimeoutMs / 1000}s`); resolve(''); }, config.agent.ragTimeoutMs));
       const search = chunksSearch(query, userId, 'hybrid', {
         d1: this.deps.d1,
         qdrant: this.deps.qdrant,
@@ -144,12 +145,29 @@ export class AgentLoop {
   ): Promise<{ textContent: string; toolCalls: ToolCall[] }> {
     const textParts: string[] = [];
     const toolCalls: ToolCall[] = [];
+    let buffer = '';
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      if (buffer) {
+        sseSend(controller, { type: 'text', content: buffer });
+        textParts.push(buffer);
+        buffer = '';
+      }
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    };
 
     for await (const event of this.deps.llm.chat(messages, tools)) {
       if (event.type === 'text') {
-        sseSend(controller, { type: 'text', content: event.content });
-        textParts.push(event.content);
+        buffer += event.content;
+        const shouldFlush = /[。！？.!?\n]/.test(event.content) || buffer.length >= config.agent.textFlushChars;
+        if (shouldFlush) {
+          flush();
+        } else if (!flushTimer) {
+          flushTimer = setTimeout(flush, config.agent.textFlushMs);
+        }
       } else if (event.type === 'tool_call') {
+        flush();
         sseSend(controller, {
           type: 'tool_call',
           name: event.name,
@@ -164,6 +182,7 @@ export class AgentLoop {
       }
     }
 
+    flush();
     return { textContent: textParts.join(''), toolCalls };
   }
 

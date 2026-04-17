@@ -1,0 +1,31 @@
+export const config = {
+  agent: {
+    maxRounds: 30,
+    ragTimeoutMs: 15_000,
+    llmMaxRetries: 1,
+    llmRetryDelayMs: 2_000,
+    textFlushChars: 20,
+    textFlushMs: 80,
+  },
+  search: {
+    rrfK: 60,
+    mmrLambda: 0.7,
+    mmrTopK: 5,
+    ftsLimit: 20,
+    vectorLimit: 20,
+  },
+  chunker: {
+    targetTokens: 500,
+    overlapTokens: 75,
+    windowTokens: 100,
+    charsPerToken: 4,
+  },
+  web: {
+    fetchTimeoutMs: 10_000,
+    maxResponseBytes: 1_024 * 1024,
+  },
+  qdrant: {
+    vectorSize: 1024,
+    distance: 'Cosine' as const,
+  },
+};

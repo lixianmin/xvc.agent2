@@ -318,8 +318,9 @@ function appendAssistantMessage(content) {
     const container = $('#messages');
     const div = document.createElement('div');
     div.className = 'message assistant';
+    const avatar = (state.aiNickname || 'AI')[0].toUpperCase();
     div.innerHTML = `
-        <div class="message-avatar">AI</div>
+        <div class="message-avatar">${escapeHtml(avatar)}</div>
         <div class="message-body"><div class="message-bubble"></div></div>
     `;
     container.appendChild(div);
@@ -399,6 +400,7 @@ async function sendMessage() {
     const thread = state.threads.find(c => c.id === state.currentThreadId);
     if (thread && !thread.title) {
         thread.title = content.length > 40 ? content.substring(0, 40) + '...' : content;
+        api('POST', '/threads/update-title', { id: state.currentThreadId, title: thread.title }).catch(() => {});
         renderThreads();
     }
 
@@ -448,10 +450,18 @@ async function sendMessage() {
 
                 try {
                     const event = JSON.parse(data);
+                    if (event.type !== 'text') {
+                        const detail = event.type === 'tool_call'
+                            ? `${event.name}(${JSON.stringify(event.args || {})?.slice(0, 120)})`
+                            : event.type === 'tool_result'
+                            ? `${event.name} → ${String(event.result || '').slice(0, 150)}`
+                            : event.content || '';
+                        console.log(`[sse] ${event.type}`, detail);
+                    }
                     switch (event.type) {
                         case 'text':
+                            if (statusEl) { statusEl.remove(); statusEl = null; }
                             if (!assistantEl) {
-                                if (statusEl) { statusEl.remove(); statusEl = null; }
                                 assistantEl = appendAssistantMessage('');
                                 assistantBubble = assistantEl.querySelector('.message-bubble');
                             }
@@ -472,12 +482,14 @@ async function sendMessage() {
                             scrollToBottom();
                             break;
                         case 'tool_call':
+                            if (statusEl) { statusEl.remove(); statusEl = null; }
                             if (!assistantEl) {
                                 if (statusEl) { statusEl.remove(); statusEl = null; }
                                 assistantEl = appendAssistantMessage(fullText);
                                 assistantBubble = assistantEl.querySelector('.message-bubble');
                             }
                             hadToolCalls = true;
+                            round2Bubble = null;
                             addToolCallBadge(
                                 assistantEl.querySelector('.message-body'),
                                 event.name,
@@ -487,9 +499,11 @@ async function sendMessage() {
                             scrollToBottom();
                             break;
                         case 'tool_result':
+                            if (statusEl) { statusEl.remove(); statusEl = null; }
                             updateToolCallBadge(event.call_id, event.result);
                             break;
                         case 'status':
+                            if (statusEl) statusEl.remove();
                             statusEl = appendStatusMessage(event.content);
                             break;
                         case 'error':
@@ -624,12 +638,17 @@ async function saveSettings(e) {
         const res = await api('POST', '/user/update', {
             id: state.userId,
             ...(name ? { name } : {}),
-            ...(nickname ? { ai_nickname: nickname } : {}),
+            ai_nickname: nickname || null,
         });
         state.userName = res.name;
         state.aiNickname = res.ai_nickname;
         localStorage.setItem(LS_USER_NAME, res.name);
         closeSettings();
+        appendStatusMessage('设置已保存，下条消息生效');
+        setTimeout(() => {
+            const s = document.querySelector('.message.status:last-of-type');
+            if (s) s.remove();
+        }, 3000);
     } catch (err) {
         errEl.textContent = err.message;
         show(errEl);

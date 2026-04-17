@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, createDocument, listDocuments, deleteDocument } from './dao/d1';
+import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, createDocument, listDocuments, deleteDocument } from './dao/d1';
 import { createEvent, markCompleted, markFailed, getPendingEvents } from './dao/outbox';
 import { LLMClient } from './llm/client';
 import { EmbeddingClient } from './llm/embedding';
@@ -74,6 +74,12 @@ app.get('/api/threads/messages', authMiddleware, async (c) => {
 app.post('/api/threads/delete', authMiddleware, async (c) => {
   const { id } = await c.req.json();
   await deleteThread(c.env.DB, id);
+  return c.json({ ok: true });
+});
+
+app.post('/api/threads/update-title', authMiddleware, async (c) => {
+  const { id, title } = await c.req.json();
+  await updateThreadTitle(c.env.DB, id, title);
   return c.json({ ok: true });
 });
 

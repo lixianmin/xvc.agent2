@@ -171,6 +171,10 @@ export async function deleteThread(db: D1Database, id: number): Promise<boolean>
   return result.meta.changes > 0;
 }
 
+export async function updateThreadTitle(db: D1Database, id: number, title: string): Promise<void> {
+  await db.prepare('UPDATE threads SET title = ? WHERE id = ?').bind(title, id).run();
+}
+
 type Message = {
   id: number;
   thread_id: number;
