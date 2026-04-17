@@ -125,21 +125,19 @@ Not a separate tool. The agent loop supports deep research through multi-round t
 5. After all sub-questions researched: synthesizes structured report with citations
 6. 30-round limit provides space for 3-5 sub-questions with search+fetch each
 
-### Sub-Agent (Deferred — See todo.md)
+### Sub-Agent (Implemented — See spawn_agent spec)
 
-**Design principles** (for future implementation):
+**实现方案**: `AgentLoop` 重构为 AsyncGenerator，`execute()` 返回 `AsyncGenerator<AgentEvent>`。SSE 和子代理都是 `execute()` 的薄包装。详见 `docs/superpowers/specs/2025-04-17-spawn-agent-design.md`。
+
 - Sub-agent is a **tool** (`spawn_agent`) that the main LLM can call
 - Sub-agent runs with **isolated context**: its own system prompt, no access to parent conversation
-- Input: task description + relevant context (explicitly passed by main agent)
-- Output: structured result returned to main agent as tool_result
+- Input: task description + optional context (explicitly passed by main agent)
+- Output: free-text result returned to main agent as tool_result
 - Main agent decides how to use the result
+- Up to 3 sub-agents in parallel via `Promise.allSettled`
+- Sub-agent uses same `AgentLoop.execute()` with different options (maxRounds=15, no persistence, no spawn_agent)
 
-**Current workaround**: Deep research uses prompt-guided multi-round tool calls within the same agent loop. No context isolation, but sufficient for search-heavy tasks.
-
-**Architecture considerations (already accounted for)**:
-- `AgentLoop` class should remain composable: a sub-agent is just another `AgentLoop.run()` call with different parameters
-- Tool dispatch should not assume singleton state — avoid global mutable state in tool handlers
-- System prompt builder should accept arbitrary instructions, not just hardcoded templates
+**Deep research**: Now uses spawn_agent instead of prompt-guided workaround. Main agent decomposes complex research into sub-tasks, spawns sub-agents to research each, then synthesizes.
 
 ### Error Handling
 
