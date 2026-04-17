@@ -1,0 +1,15 @@
+name = "xvc-agent2"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xvc-agent2"
+database_id = "TBD"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "xvc-agent2-files"
+
+[triggers]
+crons = ["*/5 * * * *"]
