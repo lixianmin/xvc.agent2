@@ -1,6 +1,7 @@
 import { searchFTS } from '../dao/d1';
 import { QdrantDAO } from '../dao/qdrant';
 import { EmbeddingClient } from '../llm/embedding';
+import { log } from './logger';
 
 type SearchCandidate = { id: number | string };
 type ScoredCandidate = { id: number | string; score: number };
@@ -112,24 +113,37 @@ export async function chunksSearch(
     return vectorSearch(deps.embedding, deps.qdrant, query, userId);
   }
 
+  log.info('search:chunksSearch', 'hybrid search started', { query: query.slice(0, 200), userId, mode });
+
   const [ftsResults, vectorResults] = await Promise.allSettled([
     keywordSearch(deps.d1, query),
     vectorSearchWithVectors(deps.embedding, deps.qdrant, query, userId),
   ]);
 
   const fts = ftsResults.status === 'fulfilled' ? ftsResults.value : [];
+  if (ftsResults.status === 'rejected') {
+    log.warn('search:chunksSearch', 'FTS search failed', { error: String(ftsResults.reason) });
+  } else {
+    log.info('search:chunksSearch', 'FTS results', { count: fts.length, topScores: fts.slice(0, 3).map(r => r.score) });
+  }
+
   const vec = vectorResults.status === 'fulfilled'
     ? vectorResults.value
     : (() => {
-        console.warn('Qdrant search failed, falling back to keyword-only results');
+        log.warn('search:chunksSearch', 'vector search failed', { error: String(vectorResults.reason) });
         return [];
       })();
+
+  if (vec.length > 0) {
+    log.info('search:chunksSearch', 'vector results', { count: vec.length, topScores: vec.slice(0, 3).map(r => r.score) });
+  }
 
   if (vec.length === 0) return fts;
 
   const ftsList: SearchCandidate[] = fts.map((r) => ({ id: r.id }));
   const vecList: SearchCandidate[] = vec.map((r) => ({ id: r.id }));
   const fused = reciprocalRankFusion([ftsList, vecList], [1, 1]);
+  log.info('search:chunksSearch', 'RRF fusion', { fusedCount: fused.length });
 
   const ftsMap = new Map(fts.map((r) => [r.id, r]));
   const vecMap = new Map(vec.map((r) => [r.id, r]));
@@ -147,11 +161,14 @@ export async function chunksSearch(
   });
 
   const [queryVec] = await deps.embedding.embed([query]);
-  return mmrRerank(candidates, queryVec, 0.7, 5);
+  const reranked = mmrRerank(candidates, queryVec, 0.7, 5);
+  log.info('search:chunksSearch', 'MMR reranked', { finalCount: reranked.length, ids: reranked.map(r => r.id) });
+  return reranked;
 }
 
 async function keywordSearch(d1: D1Database, query: string): Promise<ChunkResult[]> {
   const results = await searchFTS(d1, query);
+  log.info('search:keywordSearch', 'FTS results', { count: results.length });
   return results.map((r) => ({ id: r.id, content: r.content, score: r.score, doc_id: 0 }));
 }
 
@@ -162,7 +179,9 @@ async function vectorSearch(
   userId: number,
 ): Promise<ChunkResult[]> {
   const [vec] = await embedding.embed([query]);
+  log.info('search:vectorSearch', 'embedding done', { dim: vec.length });
   const results = await qdrant.searchVectors(vec, userId, 20);
+  log.info('search:vectorSearch', 'qdrant results', { count: results.length });
   return results.map((r) => ({
     id: r.payload.chunk_id as number,
     content: (r.payload.content as string) ?? '',
@@ -178,7 +197,9 @@ async function vectorSearchWithVectors(
   userId: number,
 ): Promise<ChunkWithVector[]> {
   const [vec] = await embedding.embed([query]);
+  log.info('search:vectorSearchWithVectors', 'embedding done', { dim: vec.length });
   const results = await qdrant.searchVectors(vec, userId, 20, true);
+  log.info('search:vectorSearchWithVectors', 'qdrant results', { count: results.length });
   return results.map((r) => ({
     id: r.payload.chunk_id as number,
     content: (r.payload.content as string) ?? '',

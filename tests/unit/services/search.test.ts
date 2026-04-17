@@ -109,7 +109,7 @@ describe('chunksSearch', () => {
   });
 
   it('falls back to keyword-only when Qdrant fails', async () => {
-    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const deps = makeDeps();
     deps.qdrant.searchVectors.mockRejectedValue(new Error('Qdrant down'));
 
@@ -117,8 +117,8 @@ describe('chunksSearch', () => {
 
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe(1);
-    expect(consoleWarn).toHaveBeenCalled();
-    consoleWarn.mockRestore();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });
 
