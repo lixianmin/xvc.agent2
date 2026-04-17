@@ -70,6 +70,15 @@ User message → [LLM call] → parse response
 
 Convention-based: tool name `web_search` → handler function `do_web_search`. No interface, no registry — just a mapping object.
 
+### Message Persistence
+
+During the agent loop:
+1. User message saved to `messages` table before loop starts
+2. Each LLM response (text + tool_calls) saved as assistant message after each turn
+3. Tool results saved as tool messages after each tool execution
+4. All messages in a single conversation share the same `conversation_id`
+5. If the loop completes, the final assistant response is the last saved message
+
 ### Deep Research & Sub-Agent Planning
 
 Not a separate tool. The agent loop supports sub-agent planning through multi-round tool calls orchestrated by a research-specific system prompt extension:
@@ -220,8 +229,22 @@ Outbox is a safety net, not the driver. Primary path attempts synchronous dual-w
 | Chunk metadata + content | D1 | doc_id, hash |
 | Full-text index | D1 FTS5 | content (porter + unicode61) |
 | Vectors | Qdrant | cosine similarity (dim=1024) |
-| Raw files | R2 | user/{userId}/{filename} |
+| Raw files | R2 | user/{userId}/{timestamp}_{filename} |
 | Outbox events | D1 | status + created_at |
+
+### Qdrant Collection Schema
+
+```
+Collection: "chunks"
+Vectors: dim=1024, distance=cosine
+Payload per point:
+  - chunk_id: integer (matches D1 chunks.id)
+  - doc_id: integer (matches D1 documents.id)
+  - user_id: integer
+  - seq: integer (chunk sequence number)
+```
+
+Initialization: create collection on first run if not exists (check via Qdrant API).
 
 ---
 
@@ -322,7 +345,7 @@ Dynamic prompt built per request:
 2. User info (name, AI nickname)
 3. Current date
 4. Available tools (JSON schema)
-5. Relevant chunks from RAG (if search was triggered)
+5. RAG context (only if chunks_search was triggered via tool call in a previous round of the same request)
 
 ### Context Management
 
@@ -345,6 +368,7 @@ PUT    /api/user/:id                # Body: { name?, ai_nickname? } → updated 
 # Conversations
 GET    /api/conversations           # Query: ?userId= → [{ id, title, created_at }]
 POST   /api/conversations           # Body: { userId, title? } → { id, title }
+GET    /api/conversations/:id/messages  # Query: ?limit=&before= → [{ id, role, content, ... }]
 DELETE /api/conversations/:id       # → 204
 
 # Chat (core)
@@ -569,6 +593,10 @@ crons = ["*/5 * * * *"]  # Outbox retry every 5 minutes
 wrangler dev    # Starts local Worker with D1/R2 simulation
 # Qdrant: docker run -p 6333:6333 qdrant/qdrant
 ```
+
+**Note**: CF Worker has a 10MB uncompressed bundle limit. PDF parsing (`pdf-parse`) and Word parsing (`mammoth`) libraries contribute significantly. If bundle exceeds limit, consider:
+- Using lighter alternatives (e.g., `pdfjs-dist` with tree-shaking)
+- Offloading heavy parsing to a separate Worker or external service
 
 ### Production
 
