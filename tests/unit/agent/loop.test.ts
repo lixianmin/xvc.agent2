@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentLoop, type AgentDeps } from '../../../src/agent/loop';
+import { AgentLoop, type AgentDeps, type AgentEvent } from '../../../src/agent/loop';
 import { LLMClient, type ChatEvent } from '../../../src/llm/client';
 import { EmbeddingClient } from '../../../src/llm/embedding';
 import { QdrantDAO } from '../../../src/dao/qdrant';
@@ -40,6 +40,14 @@ async function collectEvents(stream: ReadableStream): Promise<any[]> {
         events.push(JSON.parse(line.slice(6)));
       }
     }
+  }
+  return events;
+}
+
+async function collectGeneratorEvents(gen: AsyncGenerator<any>): Promise<any[]> {
+  const events: any[] = [];
+  for await (const event of gen) {
+    events.push(event);
   }
   return events;
 }
@@ -235,5 +243,98 @@ describe('AgentLoop', () => {
     }
 
     expect(fullText).toContain('data: [DONE]\n\n');
+  });
+});
+
+describe('AgentLoop execute() generator', () => {
+  let deps: AgentDeps;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (getUser as any).mockResolvedValue({ id: USER_ID, name: 'TestUser', ai_nickname: '小助' });
+    (loadMessages as any).mockResolvedValue([]);
+    (saveMessage as any).mockResolvedValue({ id: 1 });
+    (chunksSearch as any).mockResolvedValue([]);
+  });
+
+  it('execute() yields events as async generator', async () => {
+    const llm = makeMockLLM([
+      [{ type: 'text', content: 'Hello from generator.' }],
+    ]);
+    deps = makeDeps(llm);
+
+    const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG);
+    const events = await collectGeneratorEvents(gen);
+
+    const textEvents = events.filter(e => e.type === 'text');
+    expect(textEvents.map(e => e.content).join('')).toContain('Hello from generator.');
+    expect(events.some(e => e.type === 'status')).toBe(true);
+  });
+
+  it('execute() with persistMessages=false skips all DB writes', async () => {
+    const llm = makeMockLLM([
+      [{ type: 'text', content: 'ok' }],
+    ]);
+    deps = makeDeps(llm);
+
+    const gen = new AgentLoop(deps, 'sub-0').execute(USER_ID, CONV_ID, USER_MSG, {
+      persistMessages: false,
+    });
+    const events = await collectGeneratorEvents(gen);
+
+    expect(saveMessage).not.toHaveBeenCalled();
+    expect(loadMessages).not.toHaveBeenCalled();
+    expect(events.some(e => e.type === 'text')).toBe(true);
+  });
+
+  it('execute() with skipRag=true skips RAG retrieval', async () => {
+    const llm = makeMockLLM([
+      [{ type: 'text', content: 'ok' }],
+    ]);
+    deps = makeDeps(llm);
+
+    const gen = new AgentLoop(deps, 'sub-0').execute(USER_ID, CONV_ID, USER_MSG, {
+      skipRag: true,
+    });
+    const events = await collectGeneratorEvents(gen);
+
+    expect(chunksSearch).not.toHaveBeenCalled();
+    expect(events.filter(e => e.type === 'status' && e.content.includes('检索'))).toHaveLength(0);
+  });
+
+  it('execute() with custom tools uses provided tool set', async () => {
+    const customTools = [{ type: 'function' as const, function: { name: 'my_tool', description: 'test', parameters: { type: 'object', properties: {} } } }];
+    const llm = makeMockLLM([
+      [{ type: 'text', content: 'ok' }],
+    ]);
+    deps = makeDeps(llm);
+
+    const gen = new AgentLoop(deps, 'sub-0').execute(USER_ID, CONV_ID, USER_MSG, {
+      tools: customTools,
+    });
+    await collectGeneratorEvents(gen);
+
+    expect(llm.chat).toHaveBeenCalledWith(
+      expect.anything(),
+      customTools,
+    );
+  });
+
+  it('execute() yields limit_reached when max rounds exceeded', async () => {
+    const toolEvent: ChatEvent = { type: 'tool_call', name: 'web_search', args: { q: 'x' }, call_id: 'c0' };
+    const rounds: ChatEvent[][] = [];
+    for (let i = 0; i < 6; i++) {
+      rounds.push([toolEvent]);
+    }
+    const llm = makeMockLLM(rounds);
+    (dispatchTool as any).mockResolvedValue('[]');
+    deps = makeDeps(llm);
+
+    const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG, {
+      maxRounds: 5,
+    });
+    const events = await collectGeneratorEvents(gen);
+
+    expect(events.some(e => e.type === 'limit_reached')).toBe(true);
   });
 });
