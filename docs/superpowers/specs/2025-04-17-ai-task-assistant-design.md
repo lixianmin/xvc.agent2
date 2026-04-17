@@ -102,11 +102,11 @@ All agent loop state transitions are logged via `console.log` for debugging:
 ### Message Persistence
 
 During the agent loop:
-1. User message saved to `messages` table before loop starts
-2. Each LLM response (text + tool_calls) saved as assistant message after each turn
-3. Tool results saved as tool messages after each tool execution
+1. User message saved as `role='user'` row before loop starts
+2. Each LLM response saved as `role='assistant'` row. If response contains tool_calls, `tool_calls` column stores the JSON array
+3. Each tool result saved as a separate `role='tool'` row, with `tool_call_id` linking back to the assistant's tool_call
 4. All messages in a single conversation share the same `conversation_id`
-5. If the loop completes, the final assistant response is the last saved message
+5. Conversations table `updated_at` refreshed on each new message
 6. **Status events are NOT persisted** — they are UI-only, ephemeral
 
 ### Deep Research
@@ -174,7 +174,8 @@ CREATE TABLE conversations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
   title TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE TABLE messages (
@@ -183,7 +184,7 @@ CREATE TABLE messages (
   role TEXT NOT NULL CHECK (role IN ('user','assistant','tool')),
   content TEXT NOT NULL,
   tool_calls TEXT,
-  tool_results TEXT,
+  tool_call_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
@@ -203,9 +204,7 @@ CREATE TABLE chunks (
   doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL,
   content TEXT NOT NULL,
-  position INTEGER NOT NULL,
   token_count INTEGER,
-  hash TEXT NOT NULL,
   UNIQUE(doc_id, seq)
 );
 
@@ -229,11 +228,20 @@ CREATE TABLE outbox_events (
 
 CREATE INDEX idx_tasks_user ON tasks(user_id);
 CREATE INDEX idx_conversations_user ON conversations(user_id);
-CREATE INDEX idx_messages_conversation ON messages(conversation_id);
+CREATE INDEX idx_messages_conv_created ON messages(conversation_id, created_at);
 CREATE INDEX idx_documents_user ON documents(user_id);
-CREATE INDEX idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 ```
+
+**messages 表设计说明**:
+- `role='user'`: content 为用户消息文本，tool_calls/tool_call_id 为 NULL
+- `role='assistant'`: content 为文本响应；若有工具调用，tool_calls 存 OpenAI 格式的 tool_calls JSON 数组
+- `role='tool'`: content 为工具执行结果，tool_call_id 关联到对应 assistant 消息中的 tool_call
+- 每个 tool_call 生成一条独立的 `role='tool'` 行，通过 `tool_call_id` 关联
+
+**索引设计说明**:
+- `idx_chunks_doc` 省略: `UNIQUE(doc_id, seq)` 约束自动创建索引
+- `idx_messages_conv_created` 复合索引: 同时覆盖 WHERE conversation_id=? 和 ORDER BY created_at
 
 ---
 
@@ -435,9 +443,9 @@ Dynamic prompt built per request:
 ### Context Management
 
 - Send: system prompt + recent messages within token budget (~8000 tokens)
-- **Message selection**: Load messages newest-first, accumulate until token budget reached. Always include complete tool_call→tool_result chains (never split them)
+- **Message selection**: Load messages newest-first, accumulate until token budget reached. Always include complete assistant(tool_calls)→tool(tool_call_id) chains (never split them)
 - **Token estimation**: ~4 chars per token (rough estimate for Chinese+English mixed content)
-- **Message serialization in DB**: `tool_calls` stores OpenAI-format `tool_calls` array as JSON string. `tool_results` stores matching results array as JSON string. During context reconstruction, these are parsed and formatted as separate assistant/tool messages for the LLM
+- **Context reconstruction from DB**: Each DB row maps directly to one LLM message. `role='assistant'` rows with `tool_calls` JSON are sent as assistant messages with tool_calls. `role='tool'` rows are sent as tool messages with `tool_call_id`. No parsing/transforming needed.
 - No summary compression in MVP
 
 ---
