@@ -16,7 +16,7 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `src/agent/loop.ts` | **Modify** | AgentLoop 类：execute() generator + run() SSE 包装 |
+| `src/agent/loop.ts` | **Modify** | AgentLoop 类：构造函数新增 agentId, execute() generator + run() SSE 包装 |
 | `src/agent/prompt.ts` | Modify | buildSystemPrompt 新增 systemPromptExtra 参数 |
 | `tests/unit/agent/loop.test.ts` | **Modify** | 新增 generator 模式测试 + 验证现有测试兼容 |
 | `tests/unit/agent/prompt.test.ts` | Modify | 新增 systemPromptExtra 测试 |
@@ -102,7 +102,7 @@ describe('AgentLoop execute() generator', () => {
     ]);
     deps = makeDeps(llm);
 
-    const gen = new AgentLoop(deps).execute('main', USER_ID, CONV_ID, USER_MSG);
+    const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG);
     const events = await collectGeneratorEvents(gen);
 
     const textEvents = events.filter(e => e.type === 'text');
@@ -116,7 +116,7 @@ describe('AgentLoop execute() generator', () => {
     ]);
     deps = makeDeps(llm);
 
-    const gen = new AgentLoop(deps).execute('sub-0', USER_ID, CONV_ID, USER_MSG, {
+    const gen = new AgentLoop(deps, 'sub-0').execute(USER_ID, CONV_ID, USER_MSG, {
       persistMessages: false,
     });
     const events = await collectGeneratorEvents(gen);
@@ -132,12 +132,13 @@ describe('AgentLoop execute() generator', () => {
     ]);
     deps = makeDeps(llm);
 
-    const gen = new AgentLoop(deps).execute('sub-0', USER_ID, CONV_ID, USER_MSG, {
+    const gen = new AgentLoop(deps, 'sub-0').execute(USER_ID, CONV_ID, USER_MSG, {
       skipRag: true,
     });
-    await collectGeneratorEvents(gen);
+    const events = await collectGeneratorEvents(gen);
 
     expect(chunksSearch).not.toHaveBeenCalled();
+    expect(events.filter(e => e.type === 'status' && e.content.includes('检索'))).toHaveLength(0);
   });
 
   it('execute() with custom tools uses provided tool set', async () => {
@@ -147,7 +148,7 @@ describe('AgentLoop execute() generator', () => {
     ]);
     deps = makeDeps(llm);
 
-    const gen = new AgentLoop(deps).execute('sub-0', USER_ID, CONV_ID, USER_MSG, {
+    const gen = new AgentLoop(deps, 'sub-0').execute(USER_ID, CONV_ID, USER_MSG, {
       tools: customTools,
     });
     await collectGeneratorEvents(gen);
@@ -168,7 +169,7 @@ describe('AgentLoop execute() generator', () => {
     (dispatchTool as any).mockResolvedValue('[]');
     deps = makeDeps(llm);
 
-    const gen = new AgentLoop(deps).execute('main', USER_ID, CONV_ID, USER_MSG, {
+    const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG, {
       maxRounds: 5,
     });
     const events = await collectGeneratorEvents(gen);
@@ -198,7 +199,6 @@ Expected: 新测试失败（`execute is not a function`），原有 8 个测试�
 
 ```typescript
 async *execute(
-  agentId: string,
   userId: number,
   threadId: number,
   userMessage: string,
@@ -215,12 +215,11 @@ async *execute(
   const persistMessages = options?.persistMessages ?? true;
   const { deps } = this;
 
-  yield { type: 'status', content: '正在检索相关文档...' };
-
   let ragContext = '';
   if (!options?.skipRag) {
+    yield { type: 'status', content: '正在检索相关文档...' };
     ragContext = await this.doRagRetrieval(userMessage, userId);
-    log.info(`agent:${agentId}`, 'RAG retrieval done', { contextLen: ragContext.length });
+    log.info(`agent:${this.agentId}`, 'RAG retrieval done', { contextLen: ragContext.length });
   }
 
   const user = await getUser(deps.d1, userId);
@@ -229,18 +228,19 @@ async *execute(
   const datetime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
   const tools = options?.tools ?? getToolDefinitions();
   const systemPrompt = buildSystemPrompt({ tools, userName, aiNickname, ragContext, datetime, systemPromptExtra: options?.systemPromptExtra });
-  log.info(`agent:${agentId}`, 'system prompt built', { promptLen: systemPrompt.length, userName, toolCount: tools.length });
+  log.info(`agent:${this.agentId}`, 'system prompt built', { promptLen: systemPrompt.length, userName, toolCount: tools.length });
 
   const messages: Message[] = [{ role: 'system', content: systemPrompt }];
 
-  yield* this.runLoop(agentId, userId, threadId, userMessage, tools, messages, maxRounds, persistMessages, options?.abortSignal);
+  yield* this.runLoop(userId, threadId, userMessage, tools, messages, maxRounds, persistMessages, options?.abortSignal);
 }
 ```
 
 关键设计：
+- `agentId` 在构造函数上（`this.agentId`），不是 execute() 参数
 - `messages` 数组在此初始化（只含 system prompt），传给 `runLoop()`
 - `runLoop()` 负责追加 user message + history + 每轮的 assistant/tool messages
-- `skipRag` 只控制 `ragContext` 是否为空，不影响其他逻辑，无代码重复
+- `skipRag` 控制是否 yield status + 执行 RAG，避免空 status
 
 - [ ] **Step 2: 实现 runLoop() — 主循环部分**
 
@@ -248,7 +248,6 @@ async *execute(
 
 ```typescript
 private async *runLoop(
-  agentId: string,
   userId: number,
   threadId: number,
   userMessage: string,
@@ -259,6 +258,7 @@ private async *runLoop(
   abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
   const { deps } = this;
+  const agentId = this.agentId;
 
   if (persistMessages) {
     await saveMessage(deps.d1, { thread_id: threadId, role: 'user', content: userMessage });
@@ -369,7 +369,7 @@ run(userId: number, threadId: number, userMessage: string): ReadableStream {
 
   return new ReadableStream({
     async start(controller) {
-      const agentId = 'main';
+      const agentId = self.agentId;
       log.info(`agent:${agentId}`, 'user message received', { userId, threadId, content: userMessage.slice(0, 200) });
 
       let buffer = '';
@@ -384,7 +384,7 @@ run(userId: number, threadId: number, userMessage: string): ReadableStream {
       };
 
       try {
-        for await (const event of self.execute(agentId, userId, threadId, userMessage)) {
+        for await (const event of self.execute(userId, threadId, userMessage)) {
           if (event.type === 'text') {
             buffer += event.content;
             const shouldFlush = /[。！？.!?\n]/.test(event.content) || buffer.length >= config.agent.textFlushChars;

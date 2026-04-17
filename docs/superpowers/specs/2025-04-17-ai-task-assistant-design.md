@@ -137,7 +137,7 @@ Not a separate tool. The agent loop supports deep research through multi-round t
 - Up to 3 sub-agents in parallel via `Promise.allSettled`
 - Sub-agent uses same `AgentLoop.execute()` with different options (maxRounds=15, no persistence, no spawn_agent)
 
-**Deep research**: Now uses spawn_agent instead of prompt-guided workaround. Main agent decomposes complex research into sub-tasks, spawns sub-agents to research each, then synthesizes.
+**Deep research**: Planned to use spawn_agent instead of prompt-guided workaround. Currently still uses prompt-guided multi-round tool calls. Will switch after spawn_agent implementation (Phase 2).
 
 ### Error Handling
 

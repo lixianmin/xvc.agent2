@@ -46,21 +46,32 @@ run() → ReadableStream
 ### After
 
 ```
-execute(agentId, userId, threadId, userMessage, options?) → AsyncGenerator<AgentEvent>
-  ├─ yield { type: 'status', content: '正在检索相关文档...' }
-  ├─ for await (event of llm.chat(messages, tools)) yield event
-  ├─ yield { type: 'tool_result', ... }
-  └─ 日志内部处理，不依赖外部
+AgentLoop 构造: new AgentLoop(deps, agentId?)
+  └─ execute(userId, threadId, userMessage, options?) → AsyncGenerator<AgentEvent>
+       ├─ yield { type: 'status', ... }
+       ├─ for await (event of llm.chat(messages, tools)) yield event
+       ├─ yield { type: 'tool_result', ... }
+       └─ 日志内部处理，不依赖外部
 
-run() → ReadableStream     ← 薄包装，调用 execute()
-runSub() → Promise<string>  ← 薄包装，调用 execute()
+主代理: run() → ReadableStream     ← 薄包装，调用 execute()
+子代理: 新 AgentLoop(deps, 'sub-0') → execute() → 收集 text
 ```
+
+### 构造函数
+
+```typescript
+constructor(
+  private deps: AgentDeps,
+  private readonly agentId: string = 'main',
+)
+```
+
+`agentId` 是实例属性，不是每次调用时传的。主代理默认 `"main"`，子代理创建新实例时传 `"sub-0"` / `"sub-1"` 等。
 
 ### execute() 签名
 
 ```typescript
 async *execute(
-  agentId: string,
   userId: number,
   threadId: number,
   userMessage: string,
@@ -83,7 +94,7 @@ run(userId: number, threadId: number, userMessage: string): ReadableStream {
   return new ReadableStream({
     async start(controller) {
       try {
-        for await (const event of self.execute('main', userId, threadId, userMessage)) {
+        for await (const event of self.execute(userId, threadId, userMessage)) {
           sseSend(controller, event);
         }
       } catch (err: any) {
@@ -99,14 +110,23 @@ run(userId: number, threadId: number, userMessage: string): ReadableStream {
 
 ### runSub() — 子代理薄包装
 
+子代理不调用 `this.execute()`，而是创建**新的 AgentLoop 实例**。这避免了在同一实例上递归调用 generator 的风险，也确保上下文完全隔离：
+
 ```typescript
-async runSub(agentId: string, userId: number, task: string, context?: string): Promise<string> {
+static async runSub(
+  deps: AgentDeps,
+  agentId: string,
+  userId: number,
+  task: string,
+  context?: string,
+): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
+  const subLoop = new AgentLoop(deps, agentId);
   try {
     let result = '';
     const userMessage = context ? `背景信息：${context}\n\n任务：${task}` : task;
-    for await (const event of this.execute(agentId, userId, 0, userMessage, {
+    for await (const event of subLoop.execute(userId, 0, userMessage, {
       maxRounds: 15,
       persistMessages: false,
       tools: getSubAgentToolDefinitions(),
@@ -136,20 +156,23 @@ async runSub(agentId: string, userId: number, task: string, context?: string): P
 
 ### dispatchToolCalls 中的 spawn_agent 处理
 
-当工具名是 `spawn_agent` 时，需要 emit status 事件并等待子代理完成。这在 generator 内部自然处理：
+spawn_agent 不经过 `dispatchTool()`，在 `execute()` 的 tool dispatch 循环中做特殊处理。这是 Phase 2 实现时的具体设计，Phase 1 不涉及。实现时在 `runLoop()` 的 tool dispatch for 循环内加 `if (name === 'spawn_agent')` 分支：
 
 ```typescript
-// 在 dispatchToolCalls 中
-if (name === 'spawn_agent') {
-  yield { type: 'status', content: `已启动 ${tasks.length} 个子代理...` };
-  // Promise.allSettled 并行执行 runSub
-  // 完成后 yield status 提示
+for (const tc of toolCalls) {
+  if (tc.function.name === 'spawn_agent') {
+    yield { type: 'status', content: `已启动 ${tasks.length} 个子代理...` };
+    const results = await Promise.allSettled(
+      tasks.map((task, i) => AgentLoop.runSub(deps, `sub-${i}`, userId, task, context))
+    );
+    yield { type: 'status', content: '子代理全部完成，正在整合结果...' };
+    result = JSON.stringify(results.map(...));
+  } else {
+    result = await dispatchTool(tc.function.name, args, toolDeps);
+  }
+  yield { type: 'tool_result', ... };
 }
 ```
-
-但 `dispatchToolCalls` 目前是普通 async 方法。需要将其也改为 generator，或拆分出 spawn_agent 的特殊处理。
-
-**推荐方案**：`execute()` 主循环中，tool dispatch 部分对 spawn_agent 做特殊处理（在主循环内 yield status），其他工具走原有逻辑。spawn_agent 不经过 `dispatchTool`，直接在 `execute()` 内调用 `runSub()`。
 
 ---
 
@@ -209,8 +232,10 @@ if (name === 'spawn_agent') {
 
 ```
 主代理 execute() generator:
-  yield status: '正在检索相关文档...'
-  RAG retrieval → build system prompt → load history
+  if (!skipRag):
+    yield status: '正在检索相关文档...'
+    RAG retrieval
+  build system prompt → load history
   for round 1..N:
     yield status: '正在思考...'
     for await (event of llm.chat(messages, tools)):
@@ -304,14 +329,14 @@ if (name === 'spawn_agent') {
 
 ### AgentLoop (`src/agent/loop.ts`) — 主要改动
 
-- **核心方法 `execute()`**：从 `private async executeLoop(controller, ...)` 改为 `async *execute(agentId, userId, threadId, userMessage, options?)` — AsyncGenerator
+- **核心方法 `execute()`**：从 `private async executeLoop(controller, ...)` 改为 `async *execute(userId, threadId, userMessage, options?)` — AsyncGenerator（`agentId` 在构造函数上）
 - **移除 SSE 依赖**：所有 `sseSend(controller, ...)` 改为 `yield event`，不再接收 `ReadableStreamDefaultController`
 - **`run()`**：改为 `execute()` 的 SSE 薄包装（for await + sseSend）
-- **新增 `runSub()`**：改为 `execute()` 的内存收集薄包装
+- **新增 `static runSub()`**：创建新 AgentLoop 实例 + `execute()` 内存收集
 - **`callLLM()`**：直接透传 LLM generator 事件（yield 原始 text chunk），flush 逻辑移到 `run()` 的 SSE 包装层
-- **`dispatchToolCalls()`**：普通工具走原逻辑，spawn_agent 在 `execute()` 主循环内特殊处理
-- **构造函数**：新增 `agentId: string`（默认 `"main"`），`options: { maxRounds?, persistMessages? }`
-- **日志**：所有 `log.*` 调用改用 `[agent:${agentId}]` 前缀
+- **`dispatchToolCalls()`**：普通工具走原逻辑，spawn_agent 在 `runLoop()` 的 tool dispatch 循环内特殊处理（Phase 2）
+- **构造函数**：新增 `agentId: string`（默认 `"main"`）
+- **日志**：所有 `log.*` 调用改用 `[agent:${this.agentId}]` 前缀
 
 ### tools.ts (`src/agent/tools.ts`)
 
