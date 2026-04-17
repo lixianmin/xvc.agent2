@@ -299,9 +299,11 @@ File upload → R2 (raw file)
     ↓
 Parse (PDF/Word/TXT/MD → plain text)
     ↓
+Clean (normalize whitespace, strip control chars, remove boilerplate)
+    ↓
 Chunk (heading-aware chunking algorithm below)
     ↓
-[D1 transaction] Write chunks + chunks_fts + outbox(pending)
+[D1 transaction] Write chunks + chunks_fts(tokenized) + outbox(pending)
     ↓
 [Sync] GLM embedding API → vectors
     ↓
@@ -311,6 +313,44 @@ Chunk (heading-aware chunking algorithm below)
     ↓
 [Fallback] Cron retries if any step failed
 ```
+
+### Text Cleaning (before chunking and embedding)
+
+Applied to parsed text before chunking and embedding:
+1. Normalize whitespace: collapse multiple spaces/newlines, trim
+2. Strip control characters (except newline/tab)
+3. Remove HTML tags (for PDF/Word extraction artifacts)
+4. Normalize Unicode: NFC normalization
+
+Reference: qmd does minimal cleaning — relies on clean input. We add basic sanitization since user-uploaded files may have extraction artifacts.
+
+### CJK Tokenization for FTS5 (before FTS insertion, not embedding)
+
+`unicode61` tokenizer cannot split Chinese text into words. Application-layer CJK segmentation is required:
+
+**Implementation** (reference: qmd `src/cjk.ts`):
+1. Use `Intl.Segmenter` (built-in, zero dependencies) with locale `zh` for Chinese text
+2. Split text into script runs (Han, Kana, Hangul, other) via Unicode range detection
+3. For each CJK run: `segmenter.segment(text)` → filter `isWordLike` → join with spaces
+4. Non-CJK text passes through unchanged
+5. Applied to chunk content **before FTS5 insertion** and **before FTS5 query**
+6. **NOT applied before embedding** — embedding models handle CJK natively
+
+```typescript
+// Pseudocode
+function tokenizeCJK(text: string): string {
+  if (!containsCJK(text)) return text;
+  const chunks = splitByScript(text);
+  return chunks.map(chunk => {
+    if (chunk.script === 'han') return segmentByIntl(chunk.text, zhSegmenter);
+    return chunk.text;
+  }).join(' ');
+}
+```
+
+**Applied at two points**:
+- Index time: `syncChunkToFTS()` calls `tokenizeCJK(content)` before INSERT into `chunks_fts`
+- Query time: `searchFTS()` calls `tokenizeCJK(query)` before building FTS5 query
 
 ### Chunking Algorithm (reference: qmd src/store.ts:72-308)
 
@@ -352,8 +392,9 @@ Single tool searches all chunks — no distinction between "file search" and "me
 ### RRF Fusion (reference: qmd)
 
 ```
-1. Run FTS5 search with original query → ranked list A
-2. Run Qdrant search with original query embedding → ranked list B
+1. Tokenize query with tokenizeCJK()
+2. Run FTS5 search with tokenized query → ranked list A
+3. Run Qdrant search with original query embedding → ranked list B
 3. (Optional) LLM query expansion generates sub-queries → additional lists C, D...
 4. RRF: score(chunk) = Σ weight / (k + rank + 1)  [k=60]
 5. Lists A and B (from original query) get 2x weight vs expansion lists
@@ -559,6 +600,7 @@ xvc.agent2/
 │   │   ├── parser.ts            # File parsing (PDF, Word, TXT, MD → text)
 │   │   ├── chunker.ts           # Heading-aware chunking (reference: qmd)
 │   │   ├── search.ts            # chunks_search: FTS5 + Qdrant hybrid + RRF
+│   │   ├── cjk.ts               # CJK tokenization via Intl.Segmenter (reference: qmd)
 │   │   └── web.ts               # Serper search + URL fetch
 │   └── middleware/
 │       └── auth.ts              # X-User-Id validation middleware
