@@ -6,6 +6,7 @@ export function buildSystemPrompt(params: {
   aiNickname?: string;
   ragContext?: string;
   datetime: string;
+  systemPromptExtra?: string;
 }): string {
   const sections: string[] = [];
 
@@ -46,6 +47,10 @@ ${JSON.stringify(params.tools, null, 2)}`);
     sections.push(`## 相关文档
 以下是从用户上传的文档中检索到的相关内容：
 ${params.ragContext}`);
+  }
+
+  if (params.systemPromptExtra) {
+    sections.push(params.systemPromptExtra);
   }
 
   sections.push(`# 当前时间\n\n${params.datetime}`);

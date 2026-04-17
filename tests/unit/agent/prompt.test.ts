@@ -136,4 +136,25 @@ describe('buildSystemPrompt', () => {
 
     expect(result).toContain('分解');
   });
+
+  it('appends systemPromptExtra when provided', () => {
+    const result = buildSystemPrompt({
+      tools: sampleTools,
+      userName: 'Test',
+      datetime: '2025-04-17',
+      systemPromptExtra: '## 子代理模式\n\n你是一个子代理。',
+    });
+    expect(result).toContain('子代理模式');
+    expect(result).toContain('你是一个子代理');
+  });
+
+  it('works without systemPromptExtra', () => {
+    const result = buildSystemPrompt({
+      tools: sampleTools,
+      userName: 'Test',
+      datetime: '2025-04-17',
+    });
+    expect(result).toContain('可用工具');
+    expect(result).toContain('Test');
+  });
 });
