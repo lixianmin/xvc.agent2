@@ -18,33 +18,33 @@ export type AgentDeps = {
 const MAX_ROUNDS = 30;
 
 function sseSend(controller: ReadableStreamDefaultController, event: Record<string, unknown>) {
-  log.debug('sse', 'send', event);
+  log.debug('loop:sseSend', 'send', event);
   controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
 }
 
 export class AgentLoop {
   constructor(private deps: AgentDeps) {}
 
-  run(userId: number, conversationId: number, userMessage: string): ReadableStream {
+  run(userId: number, threadId: number, userMessage: string): ReadableStream {
     const self = this;
 
     return new ReadableStream({
       async start(controller) {
-        log.info('agent', 'user message received', { userId, conversationId, content: userMessage.slice(0, 200) });
+        log.info('loop:run', 'user message received', { userId, threadId, content: userMessage.slice(0, 200) });
         try {
-          await self.executeLoop(controller, userId, conversationId, userMessage);
+          await self.executeLoop(controller, userId, threadId, userMessage);
         } catch (err: any) {
-          log.error('agent', 'loop error', { error: err.message, stack: err.stack });
+          log.error('loop:run', 'loop error', { error: err.message, stack: err.stack });
           try {
             sseSend(controller, { type: 'error', content: `处理出错: ${err.message}` });
           } catch { /* controller already closed */ }
         } finally {
           try {
-            log.debug('sse', 'send [DONE]');
+            log.debug('loop:run', 'send [DONE]');
             controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
             controller.close();
           } catch { /* already closed */ }
-          log.info('agent', 'loop finished');
+          log.info('loop:run', 'loop finished');
         }
       },
     });
@@ -53,14 +53,14 @@ export class AgentLoop {
   private async executeLoop(
     controller: ReadableStreamDefaultController,
     userId: number,
-    conversationId: number,
+    threadId: number,
     userMessage: string,
   ): Promise<void> {
     const { deps } = this;
 
     sseSend(controller, { type: 'status', content: '正在检索相关文档...' });
     const ragContext = await this.doRagRetrieval(userMessage, userId);
-    log.info('agent', 'RAG retrieval done', { contextLen: ragContext.length });
+    log.info('loop:executeLoop', 'RAG retrieval done', { contextLen: ragContext.length });
 
     const user = await getUser(deps.d1, userId);
     const userName = user?.name ?? 'User';
@@ -69,15 +69,15 @@ export class AgentLoop {
 
     const tools = getToolDefinitions();
     const systemPrompt = buildSystemPrompt({ tools, userName, aiNickname, ragContext, datetime });
-    log.info('agent', 'system prompt built', { promptLen: systemPrompt.length, userName, toolCount: tools.length });
+    log.info('loop:executeLoop', 'system prompt built', { promptLen: systemPrompt.length, userName, toolCount: tools.length });
 
     await saveMessage(deps.d1, {
-      conversation_id: conversationId,
+      thread_id: threadId,
       role: 'user',
       content: userMessage,
     });
 
-    const history = await loadMessages(deps.d1, conversationId);
+    const history = await loadMessages(deps.d1, threadId);
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
       ...history.map((m) => ({
@@ -87,52 +87,52 @@ export class AgentLoop {
         ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
       })),
     ];
-    log.info('agent', 'message history loaded', { historyCount: history.length, totalMsgCount: messages.length });
+    log.info('loop:executeLoop', 'message history loaded', { historyCount: history.length, totalMsgCount: messages.length });
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
       sseSend(controller, { type: 'status', content: '正在思考...' });
-      log.info('agent', `round ${round + 1} started`);
+      log.info('loop:executeLoop', `round ${round + 1} started`);
 
       const { textContent, toolCalls } = await this.callLLM(messages, tools, controller);
-      log.info('agent', `round ${round + 1} LLM done`, { textLen: textContent.length, toolCallCount: toolCalls.length });
+      log.info('loop:executeLoop', `round ${round + 1} LLM done`, { textLen: textContent.length, toolCallCount: toolCalls.length });
 
       const assistantMsg = await this.saveAssistantMessage(
-        conversationId, textContent, toolCalls,
+        threadId, textContent, toolCalls,
       );
       messages.push(this.toLLMMessage(assistantMsg));
 
       if (toolCalls.length === 0) {
-        log.info('agent', 'loop ended: no tool_calls, final text', { text: textContent.slice(0, 300) });
+        log.info('loop:executeLoop', 'loop ended: no tool_calls, final text', { text: textContent.slice(0, 300) });
         break;
       }
 
       if (round >= MAX_ROUNDS - 1) {
         sseSend(controller, { type: 'limit_reached', content: '已达到最大轮次限制' });
-        log.warn('agent', 'max rounds reached');
+        log.warn('loop:executeLoop', 'max rounds reached');
         break;
       }
 
       await this.dispatchToolCalls(
-        conversationId, userId, toolCalls, messages, controller,
+        threadId, userId, toolCalls, messages, controller,
       );
     }
   }
 
   private async doRagRetrieval(query: string, userId: number): Promise<string> {
     try {
-      const timeout = new Promise<string>((resolve) => setTimeout(() => { log.warn('agent', 'RAG retrieval timed out after 5s'); resolve(''); }, 5000));
+      const timeout = new Promise<string>((resolve) => setTimeout(() => { log.warn('loop:doRagRetrieval', 'RAG retrieval timed out after 5s'); resolve(''); }, 5000));
       const search = chunksSearch(query, userId, 'hybrid', {
         d1: this.deps.d1,
         qdrant: this.deps.qdrant,
         embedding: this.deps.embedding,
       }).then((results) => {
-        log.info('agent', 'RAG search results', { count: results.length });
+        log.info('loop:doRagRetrieval', 'RAG search results', { count: results.length });
         if (results.length === 0) return '';
         return results.map((r) => r.content).join('\n---\n');
       });
       return await Promise.race([search, timeout]);
     } catch (err: any) {
-      log.warn('agent', 'RAG retrieval failed', { error: err.message });
+      log.warn('loop:doRagRetrieval', 'RAG retrieval failed', { error: err.message });
       return '';
     }
   }
@@ -168,12 +168,12 @@ export class AgentLoop {
   }
 
   private async saveAssistantMessage(
-    conversationId: number,
+    threadId: number,
     content: string,
     toolCalls: ToolCall[],
   ) {
     const saved = await saveMessage(this.deps.d1, {
-      conversation_id: conversationId,
+      thread_id: threadId,
       role: 'assistant',
       content,
       ...(toolCalls.length > 0 ? { tool_calls: JSON.stringify(toolCalls) } : {}),
@@ -191,7 +191,7 @@ export class AgentLoop {
   }
 
   private async dispatchToolCalls(
-    conversationId: number,
+    threadId: number,
     userId: number,
     toolCalls: ToolCall[],
     messages: Message[],
@@ -209,9 +209,9 @@ export class AgentLoop {
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(tc.function.arguments); } catch { /* empty */ }
 
-      log.info('agent', 'dispatching tool', { name: tc.function.name, callId: tc.id, args });
+      log.info('loop:dispatchToolCalls', 'dispatching tool', { name: tc.function.name, callId: tc.id, args });
       const result = await dispatchTool(tc.function.name, args, toolDeps);
-      log.info('agent', 'tool result', { name: tc.function.name, result: result.slice(0, 500) });
+      log.info('loop:dispatchToolCalls', 'tool result', { name: tc.function.name, result: result.slice(0, 500) });
 
       sseSend(controller, {
         type: 'tool_result',
@@ -221,7 +221,7 @@ export class AgentLoop {
       });
 
       await saveMessage(this.deps.d1, {
-        conversation_id: conversationId,
+        thread_id: threadId,
         role: 'tool',
         content: result,
         tool_call_id: tc.id,

@@ -13,7 +13,7 @@ export class LLMClient {
     const body: Record<string, unknown> = { model: this.config.model, messages, stream: true };
     if (tools?.length) body.tools = tools;
 
-    log.info('llm', 'LLM request', {
+    log.info('client:chat', 'LLM request', {
       url,
       model: this.config.model,
       msgCount: messages.length,
@@ -33,7 +33,7 @@ export class LLMClient {
 
     if (!res.ok) {
       const errorBody = await res.text().catch(() => '');
-      log.error('llm', 'LLM API error', { status: res.status, statusText: res.statusText, errorBody: errorBody.slice(0, 2000) });
+      log.error('client:chat', 'LLM API error', { status: res.status, statusText: res.statusText, errorBody: errorBody.slice(0, 2000) });
       throw new Error(`LLM API error: ${res.status} ${res.statusText}`);
     }
 
@@ -91,7 +91,7 @@ export class LLMClient {
       yield { type: 'tool_call', name: acc.name, args, call_id: acc.id };
     }
 
-    log.info('llm', 'LLM response done', { textChunks, toolCallCount });
+    log.info('client:chat', 'LLM response done', { textChunks, toolCallCount });
   }
 }
 

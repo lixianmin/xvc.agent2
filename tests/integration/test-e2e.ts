@@ -22,19 +22,19 @@ async function main() {
   console.log(`User ID: ${user.id}`);
   const userId = String(user.id);
 
-  // 2. Create conversation
-  console.log('\n--- Step 2: Create conversation ---');
-  const convRes = await api('POST', '/api/conversations/create', { userId: user.id }, { 'X-User-Id': userId });
-  console.log(`Status: ${convRes.status}`);
-  const conv = JSON.parse(convRes.body);
-  console.log(`Conv ID: ${conv.id}`);
+  // 2. Create thread
+  console.log('\n--- Step 2: Create thread ---');
+  const threadRes = await api('POST', '/api/threads/create', { userId: user.id }, { 'X-User-Id': userId });
+  console.log(`Status: ${threadRes.status}`);
+  const thread = JSON.parse(threadRes.body);
+  console.log(`Thread ID: ${thread.id}`);
 
   // 3. Send chat message (SSE stream)
   console.log('\n--- Step 3: Send chat message ---');
   const chatRes = await fetch(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-    body: JSON.stringify({ convId: conv.id, content: '帮我创建两个任务：\n1. 下午 1:00 之前记得吃饭\n2. 下午 3:00 的时候出去踢足球' }),
+    body: JSON.stringify({ threadId: thread.id, content: '帮我创建两个任务：\n1. 下午 1:00 之前记得吃饭\n2. 下午 3:00 的时候出去踢足球' }),
   });
 
   console.log(`Status: ${chatRes.status}`);

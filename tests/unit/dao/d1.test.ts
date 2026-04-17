@@ -8,10 +8,10 @@ import {
   listTasks,
   updateTask,
   deleteTask,
-  createConversation,
-  getConversation,
-  listConversations,
-  deleteConversation,
+  createThread,
+  getThread,
+  listThreads,
+  deleteThread,
   saveMessage,
   loadMessages,
   createDocument,
@@ -124,55 +124,55 @@ describe('Task DAO', () => {
   });
 });
 
-describe('Conversation DAO', () => {
+describe('Thread DAO', () => {
   let db: D1Database;
   let userId: number;
 
   beforeAll(async () => {
     db = env.DB;
     await db.exec(
-      "CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), title TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')), updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
+      "CREATE TABLE IF NOT EXISTS threads (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), title TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')), updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
     );
     const user = await createUser(db, { email: 'convuser@example.com', name: 'ConvUser' });
     userId = user.id;
   });
 
-  it('creates a conversation', async () => {
-    const conv = await createConversation(db, { userId, title: 'Test Conv' });
-    expect(conv.id).toBeDefined();
-    expect(conv.title).toBe('Test Conv');
+  it('creates a thread', async () => {
+    const thread = await createThread(db, { userId, title: 'Test Thread' });
+    expect(thread.id).toBeDefined();
+    expect(thread.title).toBe('Test Thread');
   });
 
-  it('creates conversation without title', async () => {
-    const conv = await createConversation(db, { userId });
-    expect(conv.id).toBeDefined();
-    expect(conv.title).toBeNull();
+  it('creates thread without title', async () => {
+    const thread = await createThread(db, { userId });
+    expect(thread.id).toBeDefined();
+    expect(thread.title).toBeNull();
   });
 
-  it('gets a conversation by id', async () => {
-    const conv = await createConversation(db, { userId, title: 'GetConv' });
-    const found = await getConversation(db, conv.id);
-    expect(found!.title).toBe('GetConv');
+  it('gets a thread by id', async () => {
+    const thread = await createThread(db, { userId, title: 'GetThread' });
+    const found = await getThread(db, thread.id);
+    expect(found!.title).toBe('GetThread');
   });
 
-  it('lists conversations ordered by newest first', async () => {
-    const c1 = await createConversation(db, { userId, title: 'Conv1' });
-    const c2 = await createConversation(db, { userId, title: 'Conv2' });
-    const convs = await listConversations(db, userId);
-    const myConvs = convs.filter((c) => c.id === c1.id || c.id === c2.id);
-    expect(myConvs[0].id).toBeGreaterThan(myConvs[1].id);
+  it('lists threads ordered by newest first', async () => {
+    const c1 = await createThread(db, { userId, title: 'Thread1' });
+    const c2 = await createThread(db, { userId, title: 'Thread2' });
+    const myThreads = await listThreads(db, userId);
+    const filtered = myThreads.filter((c) => c.id === c1.id || c.id === c2.id);
+    expect(filtered[0].id).toBeGreaterThan(filtered[1].id);
   });
 
-  it('deletes a conversation', async () => {
-    const conv = await createConversation(db, { userId, title: 'ToDelete' });
-    const result = await deleteConversation(db, conv.id);
+  it('deletes a thread', async () => {
+    const thread = await createThread(db, { userId, title: 'ToDelete' });
+    const result = await deleteThread(db, thread.id);
     expect(result).toBe(true);
-    const found = await getConversation(db, conv.id);
+    const found = await getThread(db, thread.id);
     expect(found).toBeNull();
   });
 
-  it('deleteConversation returns false for non-existent', async () => {
-    const result = await deleteConversation(db, 99999);
+  it('deleteThread returns false for non-existent', async () => {
+    const result = await deleteThread(db, 99999);
     expect(result).toBe(false);
   });
 });
@@ -180,22 +180,22 @@ describe('Conversation DAO', () => {
 describe('Message DAO', () => {
   let db: D1Database;
   let userId: number;
-  let convId: number;
+  let threadId: number;
 
   beforeAll(async () => {
     db = env.DB;
     await db.exec(
-      "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')), content TEXT NOT NULL, tool_calls TEXT, tool_call_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
+      "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')), content TEXT NOT NULL, tool_calls TEXT, tool_call_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
     );
     const user = await createUser(db, { email: 'msguser@example.com', name: 'MsgUser' });
     userId = user.id;
-    const conv = await createConversation(db, { userId, title: 'MsgConv' });
-    convId = conv.id;
+    const thread = await createThread(db, { userId, title: 'MsgThread' });
+    threadId = thread.id;
   });
 
   it('saves and loads a user message', async () => {
     const msg = await saveMessage(db, {
-      conversation_id: convId,
+      thread_id: threadId,
       role: 'user',
       content: 'Hello',
     });
@@ -207,7 +207,7 @@ describe('Message DAO', () => {
   it('saves a message with tool_calls', async () => {
     const toolCalls = JSON.stringify([{ id: 'tc1', function: { name: 'search' } }]);
     const msg = await saveMessage(db, {
-      conversation_id: convId,
+      thread_id: threadId,
       role: 'assistant',
       content: '',
       tool_calls: toolCalls,
@@ -217,7 +217,7 @@ describe('Message DAO', () => {
 
   it('saves a tool message with tool_call_id', async () => {
     const msg = await saveMessage(db, {
-      conversation_id: convId,
+      thread_id: threadId,
       role: 'tool',
       content: 'result data',
       tool_call_id: 'tc1',
@@ -226,11 +226,11 @@ describe('Message DAO', () => {
   });
 
   it('loadMessages returns messages in chronological order', async () => {
-    const conv = await createConversation(db, { userId, title: 'OrderConv' });
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: 'A'.repeat(100) });
-    await saveMessage(db, { conversation_id: conv.id, role: 'assistant', content: 'B'.repeat(100) });
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: 'C'.repeat(100) });
-    const msgs = await loadMessages(db, conv.id);
+    const thread = await createThread(db, { userId, title: 'OrderThread' });
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: 'A'.repeat(100) });
+    await saveMessage(db, { thread_id: thread.id, role: 'assistant', content: 'B'.repeat(100) });
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: 'C'.repeat(100) });
+    const msgs = await loadMessages(db, thread.id);
     expect(msgs.length).toBe(3);
     expect(msgs[0].content[0]).toBe('A');
     expect(msgs[1].content[0]).toBe('B');
@@ -238,13 +238,13 @@ describe('Message DAO', () => {
   });
 
   it('loadMessages respects token budget', async () => {
-    const conv = await createConversation(db, { userId, title: 'BudgetConv' });
+    const thread = await createThread(db, { userId, title: 'BudgetThread' });
     const bigContent = 'X'.repeat(4000);
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: bigContent });
-    await saveMessage(db, { conversation_id: conv.id, role: 'assistant', content: bigContent });
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: 'short' });
-    await saveMessage(db, { conversation_id: conv.id, role: 'assistant', content: 'short reply' });
-    const msgs = await loadMessages(db, conv.id, 100);
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: bigContent });
+    await saveMessage(db, { thread_id: thread.id, role: 'assistant', content: bigContent });
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: 'short' });
+    await saveMessage(db, { thread_id: thread.id, role: 'assistant', content: 'short reply' });
+    const msgs = await loadMessages(db, thread.id, 100);
     expect(msgs.length).toBe(2);
     expect(msgs[0].role).toBe('user');
     expect(msgs[0].content).toBe('short');
@@ -252,24 +252,24 @@ describe('Message DAO', () => {
   });
 
   it('loadMessages keeps complete tool_call chains', async () => {
-    const conv = await createConversation(db, { userId, title: 'ChainConv' });
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: 'A'.repeat(2000) });
+    const thread = await createThread(db, { userId, title: 'ChainThread' });
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: 'A'.repeat(2000) });
     const assistant = await saveMessage(db, {
-      conversation_id: conv.id,
+      thread_id: thread.id,
       role: 'assistant',
       content: '',
       tool_calls: JSON.stringify([{ id: 'call_1' }]),
     });
     const tool = await saveMessage(db, {
-      conversation_id: conv.id,
+      thread_id: thread.id,
       role: 'tool',
       content: 'A'.repeat(2000),
       tool_call_id: 'call_1',
     });
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: 'latest' });
-    await saveMessage(db, { conversation_id: conv.id, role: 'assistant', content: 'reply' });
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: 'latest' });
+    await saveMessage(db, { thread_id: thread.id, role: 'assistant', content: 'reply' });
 
-    const msgs = await loadMessages(db, conv.id, 200);
+    const msgs = await loadMessages(db, thread.id, 200);
     const ids = msgs.map((m) => m.id);
     if (ids.includes(assistant.id)) {
       expect(ids).toContain(tool.id);
@@ -279,15 +279,15 @@ describe('Message DAO', () => {
     }
   });
 
-  it('cascade deletes messages when conversation deleted', async () => {
-    const conv = await createConversation(db, { userId, title: 'CascadeConv' });
-    await saveMessage(db, { conversation_id: conv.id, role: 'user', content: 'will be deleted' });
-    await deleteConversation(db, conv.id);
-    const msgs = await loadMessages(db, conv.id);
+  it('cascade deletes messages when thread deleted', async () => {
+    const thread = await createThread(db, { userId, title: 'CascadeThread' });
+    await saveMessage(db, { thread_id: thread.id, role: 'user', content: 'will be deleted' });
+    await deleteThread(db, thread.id);
+    const msgs = await loadMessages(db, thread.id);
     expect(msgs.length).toBe(0);
   });
 
-  it('loadMessages returns empty array for non-existent conversation', async () => {
+  it('loadMessages returns empty array for non-existent thread', async () => {
     const msgs = await loadMessages(db, 99999);
     expect(msgs).toEqual([]);
   });

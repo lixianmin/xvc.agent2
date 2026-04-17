@@ -5,8 +5,8 @@ const state = {
     userId: null,
     userName: null,
     aiNickname: null,
-    conversations: [],
-    currentConvId: null,
+    threads: [],
+    currentThreadId: null,
     currentView: 'chat',
     isStreaming: false,
     abortController: null,
@@ -159,78 +159,78 @@ async function checkAuth() {
 
 async function enterApp() {
     showView('main');
-    await loadConversations();
+    await loadThreads();
 }
 
-async function loadConversations() {
+async function loadThreads() {
     try {
-        state.conversations = await api('GET', `/conversations/list?userId=${state.userId}`);
-        renderConversations();
+        state.threads = await api('GET', `/threads/list?userId=${state.userId}`);
+        renderThreads();
     } catch (err) {
-        showError('Failed to load conversations', loadConversations);
+        showError('Failed to load threads', loadThreads);
     }
 }
 
-function renderConversations() {
-    const list = $('#conversation-list');
+function renderThreads() {
+    const list = $('#thread-list');
     list.innerHTML = '';
-    if (state.conversations.length === 0) {
-        list.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;font-size:13px;">No conversations yet</div>';
+    if (state.threads.length === 0) {
+        list.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;font-size:13px;">No threads yet</div>';
         return;
     }
-    state.conversations.forEach(conv => {
+    state.threads.forEach(thread => {
         const item = document.createElement('div');
-        item.className = `conv-item${conv.id === state.currentConvId ? ' active' : ''}`;
-        item.dataset.id = conv.id;
+        item.className = `conv-item${thread.id === state.currentThreadId ? ' active' : ''}`;
+        item.dataset.id = thread.id;
         item.innerHTML = `
-            <span class="conv-title">${escapeHtml(conv.title || 'New Conversation')}</span>
-            <button class="conv-delete" title="Delete" aria-label="Delete conversation">&times;</button>
+            <span class="conv-title">${escapeHtml(thread.title || 'New Thread')}</span>
+            <button class="conv-delete" title="Delete" aria-label="Delete thread">&times;</button>
         `;
         item.addEventListener('click', (e) => {
             if (e.target.classList.contains('conv-delete')) return;
-            selectConversation(conv.id);
+            selectThread(thread.id);
         });
         item.querySelector('.conv-delete').addEventListener('click', (e) => {
             e.stopPropagation();
-            if (confirm('Delete this conversation?')) removeConversation(conv.id);
+            if (confirm('Delete this thread?')) removeThread(thread.id);
         });
         list.appendChild(item);
     });
 }
 
-async function createConversation() {
+async function createThread() {
     if (state.isStreaming) return;
     try {
-        const conv = await api('POST', '/conversations/create', { userId: state.userId, title: null });
-        state.conversations.unshift(conv);
-        state.currentConvId = conv.id;
-        renderConversations();
+        const thread = await api('POST', '/threads/create', { userId: state.userId, title: null });
+        state.threads.unshift(thread);
+        state.currentThreadId = thread.id;
+        renderThreads();
         activateChat();
     } catch (err) {
-        showError('Failed to create conversation');
+        showError('Failed to create thread');
     }
 }
 
-async function selectConversation(id) {
+async function selectThread(id) {
     if (state.isStreaming) return;
-    state.currentConvId = id;
-    renderConversations();
+    state.currentThreadId = id;
+    renderThreads();
     showPanel('chat');
     await loadMessages();
     closeSidebarMobile();
 }
 
-async function removeConversation(id) {
+async function removeThread(id) {
     try {
-        await api('POST', '/conversations/delete', { id });
-        state.conversations = state.conversations.filter(c => c.id !== id);
-        if (state.currentConvId === id) {
-            state.currentConvId = null;
+        await api('POST', '/threads/delete', { id });
+        state.threads = state.threads.filter(c => c.id !== id);
+        if (state.currentThreadId === id) {
+            state.currentThreadId = null;
             showEmptyState();
         }
-        renderConversations();
+        renderThreads();
     } catch {
-        showError('Failed to delete conversation');
+        showError('Failed to delete thread');
     }
 }
 
@@ -258,7 +258,7 @@ async function loadMessages() {
     show(msgs);
     setInputEnabled(true);
     try {
-        const messages = await api('GET', `/conversations/messages?id=${state.currentConvId}`);
+        const messages = await api('GET', `/threads/messages?id=${state.currentThreadId}`);
         renderMessages(messages);
     } catch {
         showError('Failed to load messages', loadMessages);
@@ -385,7 +385,7 @@ function updateToolCallBadge(callId, result, isError = false) {
 async function sendMessage() {
     const input = $('#message-input');
     const content = input.value.trim();
-    if (!content || !state.currentConvId || state.isStreaming) return;
+    if (!content || !state.currentThreadId || state.isStreaming) return;
 
     input.value = '';
     autoResizeInput();
@@ -396,10 +396,10 @@ async function sendMessage() {
 
     appendUserMessage(content);
 
-    const conv = state.conversations.find(c => c.id === state.currentConvId);
-    if (conv && !conv.title) {
-        conv.title = content.length > 40 ? content.substring(0, 40) + '...' : content;
-        renderConversations();
+    const thread = state.threads.find(c => c.id === state.currentThreadId);
+    if (thread && !thread.title) {
+        thread.title = content.length > 40 ? content.substring(0, 40) + '...' : content;
+        renderThreads();
     }
 
     let statusEl = null;
@@ -418,7 +418,7 @@ async function sendMessage() {
                 'Content-Type': 'application/json',
                 'X-User-Id': String(state.userId),
             },
-            body: JSON.stringify({ convId: state.currentConvId, content }),
+            body: JSON.stringify({ threadId: state.currentThreadId, content }),
             signal: state.abortController.signal,
         });
 
@@ -646,7 +646,7 @@ function closeSidebarMobile() {
 
 function bindEvents() {
     $('#registration-form').addEventListener('submit', register);
-    $('#new-chat-btn').addEventListener('click', createConversation);
+    $('#new-chat-btn').addEventListener('click', createThread);
     $('#sidebar-toggle').addEventListener('click', toggleSidebar);
 
     $('#message-input').addEventListener('keydown', (e) => {

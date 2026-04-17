@@ -116,25 +116,25 @@ RESP=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/user/update" \
 assert_has_field "4. Update user nickname" "$RESP" "id"
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 
-# --- 5. Create conversation ---
-CONV=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/conversations/create" \
+# --- 5. Create thread ---
+CONV=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/threads/create" \
   -H "Content-Type: application/json" \
   -d "{\"userId\":\"$USER_ID\"}" 2>/dev/null || echo '{}')
-if assert_has_field "5. Create conversation" "$CONV" "id"; then
+if assert_has_field "5. Create thread" "$CONV" "id"; then
   CONV_ID=$(echo "$CONV" | jq -r '.id')
   echo "$CONV" | jq .
 else
   echo "$CONV" | jq . 2>/dev/null || echo "$CONV"
-  echo -e "${RED}Cannot continue without conversation. Aborting.${NC}"
+  echo -e "${RED}Cannot continue without thread. Aborting.${NC}"
   exit 1
 fi
 
-# --- 6. List conversations ---
-RESP=$(curl -sf --fail-with-body "$BASE_URL/api/conversations/list?userId=$USER_ID" 2>/dev/null || echo '[]')
+# --- 6. List threads ---
+RESP=$(curl -sf --fail-with-body "$BASE_URL/api/threads/list?userId=$USER_ID" 2>/dev/null || echo '[]')
 if echo "$RESP" | jq -e 'type == "array"' >/dev/null 2>&1; then
-  log_pass "6. List conversations"
+  log_pass "6. List threads"
 else
-  log_fail "6. List conversations (expected array)"
+  log_fail "6. List threads (expected array)"
 fi
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 
@@ -142,7 +142,7 @@ echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 CHAT_RESP=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/chat" \
   -H "Content-Type: application/json" \
   -H "X-User-Id: $USER_ID" \
-  -d "{\"convId\":\"$CONV_ID\",\"content\":\"你好，请帮我创建一个任务：学习TypeScript\"}" 2>/dev/null || echo '__CURL_FAILED__')
+  -d "{\"threadId\":\"$CONV_ID\",\"content\":\"你好，请帮我创建一个任务：学习TypeScript\"}" 2>/dev/null || echo '__CURL_FAILED__')
 if [ "$CHAT_RESP" = "__CURL_FAILED__" ]; then
   log_skip "7. Chat message (LLM API unavailable or error)"
 else
@@ -208,7 +208,7 @@ fi
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 
 # --- 14. Get messages ---
-RESP=$(curl -sf --fail-with-body "$BASE_URL/api/conversations/messages?id=$CONV_ID" 2>/dev/null || echo '[]')
+RESP=$(curl -sf --fail-with-body "$BASE_URL/api/threads/messages?id=$CONV_ID" 2>/dev/null || echo '[]')
 if echo "$RESP" | jq -e 'type == "array"' >/dev/null 2>&1; then
   log_pass "14. Get messages"
 else
@@ -227,9 +227,9 @@ else
   log_skip "15. Delete task (no task ID)"
 fi
 
-# --- 16. Delete conversation ---
-RESP=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/conversations/delete" \
+# --- 16. Delete thread ---
+RESP=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/threads/delete" \
   -H "Content-Type: application/json" \
   -d "{\"id\":\"$CONV_ID\"}" 2>/dev/null || echo '{}')
-log_pass "16. Delete conversation"
+log_pass "16. Delete thread"
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"

@@ -132,7 +132,7 @@ export async function deleteTask(db: D1Database, id: number): Promise<boolean> {
   return result.meta.changes > 0;
 }
 
-type Conversation = {
+type Thread = {
   id: number;
   user_id: number;
   title: string | null;
@@ -140,40 +140,40 @@ type Conversation = {
   updated_at: string;
 };
 
-type CreateConversationInput = {
+type CreateThreadInput = {
   userId: number;
   title?: string;
 };
 
-export async function createConversation(db: D1Database, input: CreateConversationInput): Promise<Conversation> {
+export async function createThread(db: D1Database, input: CreateThreadInput): Promise<Thread> {
   const result = await db
-    .prepare('INSERT INTO conversations (user_id, title) VALUES (?, ?)')
+    .prepare('INSERT INTO threads (user_id, title) VALUES (?, ?)')
     .bind(input.userId, input.title ?? null)
     .run();
   const id = result.meta.last_row_id as number;
-  return db.prepare('SELECT * FROM conversations WHERE id = ?').bind(id).first<Conversation>()!;
+  return db.prepare('SELECT * FROM threads WHERE id = ?').bind(id).first<Thread>()!;
 }
 
-export async function getConversation(db: D1Database, id: number): Promise<Conversation | null> {
-  return db.prepare('SELECT * FROM conversations WHERE id = ?').bind(id).first<Conversation>();
+export async function getThread(db: D1Database, id: number): Promise<Thread | null> {
+  return db.prepare('SELECT * FROM threads WHERE id = ?').bind(id).first<Thread>();
 }
 
-export async function listConversations(db: D1Database, userId: number): Promise<Conversation[]> {
+export async function listThreads(db: D1Database, userId: number): Promise<Thread[]> {
   const result = await db
-    .prepare('SELECT * FROM conversations WHERE user_id = ? ORDER BY id DESC')
+    .prepare('SELECT * FROM threads WHERE user_id = ? ORDER BY id DESC')
     .bind(userId)
-    .all<Conversation>();
+    .all<Thread>();
   return result.results;
 }
 
-export async function deleteConversation(db: D1Database, id: number): Promise<boolean> {
-  const result = await db.prepare('DELETE FROM conversations WHERE id = ?').bind(id).run();
+export async function deleteThread(db: D1Database, id: number): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM threads WHERE id = ?').bind(id).run();
   return result.meta.changes > 0;
 }
 
 type Message = {
   id: number;
-  conversation_id: number;
+  thread_id: number;
   role: string;
   content: string;
   tool_calls: string | null;
@@ -182,7 +182,7 @@ type Message = {
 };
 
 type SaveMessageInput = {
-  conversation_id: number;
+  thread_id: number;
   role: string;
   content: string;
   tool_calls?: string;
@@ -191,8 +191,8 @@ type SaveMessageInput = {
 
 export async function saveMessage(db: D1Database, input: SaveMessageInput): Promise<Message> {
   const result = await db
-    .prepare('INSERT INTO messages (conversation_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)')
-    .bind(input.conversation_id, input.role, input.content, input.tool_calls ?? null, input.tool_call_id ?? null)
+    .prepare('INSERT INTO messages (thread_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)')
+    .bind(input.thread_id, input.role, input.content, input.tool_calls ?? null, input.tool_call_id ?? null)
     .run();
   const id = result.meta.last_row_id as number;
   return db.prepare('SELECT * FROM messages WHERE id = ?').bind(id).first<Message>()!;
@@ -214,10 +214,10 @@ function getToolCallIds(msg: Message): Set<string> {
   }
 }
 
-export async function loadMessages(db: D1Database, conversationId: number, tokenBudget = 8000): Promise<Message[]> {
+export async function loadMessages(db: D1Database, threadId: number, tokenBudget = 8000): Promise<Message[]> {
   const result = await db
-    .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
-    .bind(conversationId)
+    .prepare('SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC')
+    .bind(threadId)
     .all<Message>();
   const messages = result.results;
   if (messages.length === 0) return [];

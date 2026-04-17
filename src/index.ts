@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import { createUser, getUser, updateUser, createConversation, listConversations, deleteConversation, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, createDocument, listDocuments, deleteDocument } from './dao/d1';
+import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, createDocument, listDocuments, deleteDocument } from './dao/d1';
 import { createEvent, markCompleted, markFailed, getPendingEvents } from './dao/outbox';
 import { LLMClient } from './llm/client';
 import { EmbeddingClient } from './llm/embedding';
@@ -30,7 +30,7 @@ type Env = { Bindings: Bindings; Variables: Variables };
 const app = new Hono<Env>();
 
 app.get('/api/health', (c) => {
-  log.info('api', 'health check');
+  log.info('index:health', 'health check');
   return c.json({ status: 'ok', env: { hasGLMKey: !!c.env.GLM_API_KEY, hasSiliconKey: !!c.env.SILICONFLOW_API_KEY, hasQdrantUrl: !!c.env.QDRANT_URL } });
 });
 
@@ -53,36 +53,36 @@ app.post('/api/user/update', authMiddleware, async (c) => {
   return c.json(user);
 });
 
-app.get('/api/conversations/list', authMiddleware, async (c) => {
+app.get('/api/threads/list', authMiddleware, async (c) => {
   const userId = parseInt(c.req.query('userId') ?? '');
-  const convs = await listConversations(c.env.DB, userId);
-  return c.json(convs);
+  const threads = await listThreads(c.env.DB, userId);
+  return c.json(threads);
 });
 
-app.post('/api/conversations/create', authMiddleware, async (c) => {
+app.post('/api/threads/create', authMiddleware, async (c) => {
   const { userId, title } = await c.req.json();
-  const conv = await createConversation(c.env.DB, { userId, title });
-  return c.json(conv);
+  const thread = await createThread(c.env.DB, { userId, title });
+  return c.json(thread);
 });
 
-app.get('/api/conversations/messages', authMiddleware, async (c) => {
+app.get('/api/threads/messages', authMiddleware, async (c) => {
   const id = parseInt(c.req.query('id') ?? '');
   const msgs = await loadMessages(c.env.DB, id);
   return c.json(msgs);
 });
 
-app.post('/api/conversations/delete', authMiddleware, async (c) => {
+app.post('/api/threads/delete', authMiddleware, async (c) => {
   const { id } = await c.req.json();
-  await deleteConversation(c.env.DB, id);
+  await deleteThread(c.env.DB, id);
   return c.json({ ok: true });
 });
 
 app.post('/api/chat', authMiddleware, async (c) => {
-  const { convId: convIdRaw, content } = await c.req.json();
-  const convId = parseInt(convIdRaw);
+  const { threadId: threadIdRaw, content } = await c.req.json();
+  const threadId = parseInt(threadIdRaw);
   const user = c.get('user');
 
-  log.info('api', 'chat request', { convId, userId: user.id, contentLen: content.length, hasGLMKey: !!c.env.GLM_API_KEY });
+  log.info('index:chat', 'chat request', { threadId, userId: user.id, contentLen: content.length, hasGLMKey: !!c.env.GLM_API_KEY });
 
   const deps = {
     d1: c.env.DB,
@@ -93,7 +93,7 @@ app.post('/api/chat', authMiddleware, async (c) => {
   };
 
   const loop = new AgentLoop(deps);
-  const stream = loop.run(user.id, convId, content);
+  const stream = loop.run(user.id, threadId, content);
   return new Response(stream, {
     headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
   });
