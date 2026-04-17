@@ -70,6 +70,35 @@ User message → [LLM call] → parse response
 
 Convention-based: tool name `web_search` → handler function `do_web_search`. No interface, no registry — just a mapping object.
 
+### SSE Events
+
+SSE stream emits three categories of events:
+
+**1. LLM content events** — persisted to `messages` table, included in future LLM context:
+- `{ type: "text", content: "..." }` — assistant text response
+- `{ type: "tool_call", name: "...", args: {...}, call_id: "..." }` — tool invocation
+- `{ type: "tool_result", name: "...", call_id: "...", result: "..." }` — tool output
+
+**2. Status events** — UI-only progress indicators, NOT persisted, NOT sent to LLM:
+- `{ type: "status", content: "正在思考..." }` — LLM call started
+- `{ type: "status", content: "正在搜索网页..." }` — tool dispatch started
+- `{ type: "status", content: "正在处理文件..." }` — file processing
+- `{ type: "status", content: "已完成搜索，正在整合结果..." }` — tool completed, next step
+
+Status events are shown as lightweight chat bubbles in the UI to reassure users the agent is active. They are ephemeral: never saved to DB, never injected into LLM context.
+
+### Console Logging
+
+All agent loop state transitions are logged via `console.log` for debugging:
+- `[agent] user message received: convId=..., content=...`
+- `[agent] LLM call started: round X`
+- `[agent] tool_call: name=..., args=...`
+- `[agent] tool_result: name=..., duration=...ms`
+- `[agent] LLM call completed: round X, tokens=...`
+- `[agent] loop ended: rounds=..., reason=completed|limit_reached|error`
+- `[outbox] processing event: id=..., type=..., status=...`
+- `[search] mode=hybrid, query=..., fts_results=..., vec_results=..., rrf_top=...`
+
 ### Message Persistence
 
 During the agent loop:
@@ -78,6 +107,7 @@ During the agent loop:
 3. Tool results saved as tool messages after each tool execution
 4. All messages in a single conversation share the same `conversation_id`
 5. If the loop completes, the final assistant response is the last saved message
+6. **Status events are NOT persisted** — they are UI-only, ephemeral
 
 ### Deep Research
 
@@ -126,7 +156,7 @@ CREATE TABLE users (
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   ai_nickname TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE TABLE tasks (
@@ -136,15 +166,15 @@ CREATE TABLE tasks (
   description TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','done','cancelled')),
   priority TEXT DEFAULT 'medium' CHECK (priority IN ('low','medium','high')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE TABLE conversations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
   title TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE TABLE messages (
@@ -154,7 +184,7 @@ CREATE TABLE messages (
   content TEXT NOT NULL,
   tool_calls TEXT,
   tool_results TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE TABLE documents (
@@ -165,7 +195,7 @@ CREATE TABLE documents (
   size INTEGER,
   r2_key TEXT NOT NULL,
   hash TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE TABLE chunks (
@@ -193,8 +223,8 @@ CREATE TABLE outbox_events (
   payload TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
   attempts INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE INDEX idx_tasks_user ON tasks(user_id);
