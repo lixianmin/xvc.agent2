@@ -88,7 +88,7 @@ Not a separate tool. The agent loop supports deep research through multi-round t
 3. LLM outputs a research plan as text (e.g., "Sub-question 1: ..., Sub-question 2: ...")
 4. For each sub-question: calls `web_search` → `web_fetch` → extracts findings
 5. After all sub-questions researched: synthesizes structured report with citations
-6. 15-round limit provides space for 3-5 sub-questions with search+fetch each
+6. 30-round limit provides space for 3-5 sub-questions with search+fetch each
 
 ### Sub-Agent (Deferred — See todo.md)
 
@@ -110,7 +110,7 @@ Not a separate tool. The agent loop supports deep research through multi-round t
 
 - **Malformed tool_calls**: Agent loop catches parse errors, injects error as tool_result back to LLM for self-correction
 - **Tool execution failure**: Wrapped in try/catch, error message returned as tool_result so LLM can retry or explain to user
-- **Round limit reached (15)**: Agent loop terminates with a message: "I've reached my processing limit. Let me summarize what I've found so far..."
+- **Round limit reached (30)**: Agent loop terminates with a message: "I've reached my processing limit. Let me summarize what I've found so far..."
 - **LLM API failure**: Returns error to frontend, displayed to user with retry option
 - **Qdrant unreachable during chunks_search**: Falls back to keyword-only (FTS5) mode, logs warning
 
