@@ -82,11 +82,11 @@ describe('POST /api/user/create', () => {
   });
 });
 
-describe('GET /api/user/:id', () => {
+describe('GET /api/user', () => {
   it('returns user by id', async () => {
     const user = await createUser(env.DB as D1Database, { email: 'getuser@test.com', name: 'GetUser' });
 
-    const res = await app.request(`/api/user/${user.id}`, {
+    const res = await app.request(`/api/user?id=${user.id}`, {
       headers: { 'X-User-Id': String(user.id) },
     }, testEnv());
 
@@ -105,20 +105,20 @@ describe('Auth middleware', () => {
   });
 });
 
-describe('POST /api/chat/:convId', () => {
+describe('POST /api/chat', () => {
   it('returns SSE stream', async () => {
     const db = env.DB as D1Database;
     const user = await createUser(db, { email: 'chat@test.com', name: 'ChatUser' });
     const { createConversation } = await import('../../../src/dao/d1');
     const conv = await createConversation(db, { userId: user.id, title: 'Chat' });
 
-    const res = await app.request(`/api/chat/${conv.id}`, {
+    const res = await app.request('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-User-Id': String(user.id),
       },
-      body: JSON.stringify({ content: 'Hello' }),
+      body: JSON.stringify({ convId: conv.id, content: 'Hello' }),
     }, testEnv());
 
     expect(res.status).toBe(200);

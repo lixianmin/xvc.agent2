@@ -31,10 +31,10 @@ async function main() {
 
   // 3. Send chat message (SSE stream)
   console.log('\n--- Step 3: Send chat message ---');
-  const chatRes = await fetch(`${BASE}/api/chat/${conv.id}`, {
+  const chatRes = await fetch(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-    body: JSON.stringify({ content: '帮我创建两个任务：\n1. 下午 1:00 之前记得吃饭\n2. 下午 3:00 的时候出去踢足球' }),
+    body: JSON.stringify({ convId: conv.id, content: '帮我创建两个任务：\n1. 下午 1:00 之前记得吃饭\n2. 下午 3:00 的时候出去踢足球' }),
   });
 
   console.log(`Status: ${chatRes.status}`);

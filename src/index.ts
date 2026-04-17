@@ -40,8 +40,8 @@ app.post('/api/user/create', async (c) => {
   return c.json(user);
 });
 
-app.get('/api/user/:id', authMiddleware, async (c) => {
-  const id = parseInt(c.req.param('id'));
+app.get('/api/user', authMiddleware, async (c) => {
+  const id = parseInt(c.req.query('id') ?? '');
   const user = await getUser(c.env.DB, id);
   if (!user) return c.json({ error: 'User not found' }, 404);
   return c.json(user);
@@ -65,10 +65,8 @@ app.post('/api/conversations/create', authMiddleware, async (c) => {
   return c.json(conv);
 });
 
-app.get('/api/conversations/:id/messages', authMiddleware, async (c) => {
-  const id = parseInt(c.req.param('id'));
-  const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined;
-  const before = c.req.query('before');
+app.get('/api/conversations/messages', authMiddleware, async (c) => {
+  const id = parseInt(c.req.query('id') ?? '');
   const msgs = await loadMessages(c.env.DB, id);
   return c.json(msgs);
 });
@@ -79,9 +77,9 @@ app.post('/api/conversations/delete', authMiddleware, async (c) => {
   return c.json({ ok: true });
 });
 
-app.post('/api/chat/:convId', authMiddleware, async (c) => {
-  const convId = parseInt(c.req.param('convId'));
-  const { content } = await c.req.json();
+app.post('/api/chat', authMiddleware, async (c) => {
+  const { convId: convIdRaw, content } = await c.req.json();
+  const convId = parseInt(convIdRaw);
   const user = c.get('user');
 
   log.info('api', 'chat request', { convId, userId: user.id, contentLen: content.length, hasGLMKey: !!c.env.GLM_API_KEY });

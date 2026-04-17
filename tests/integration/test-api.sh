@@ -105,7 +105,7 @@ else
 fi
 
 # --- 3. Get user ---
-RESP=$(curl -sf --fail-with-body "$BASE_URL/api/user/$USER_ID" 2>/dev/null || echo '{}')
+RESP=$(curl -sf --fail-with-body "$BASE_URL/api/user?id=$USER_ID" 2>/dev/null || echo '{}')
 assert_has_field "3. Get user" "$RESP" "id"
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 
@@ -139,10 +139,10 @@ fi
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 
 # --- 7. Send chat message (SSE stream - requires LLM API key) ---
-CHAT_RESP=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/chat/$CONV_ID" \
+CHAT_RESP=$(curl -sf --fail-with-body -X POST "$BASE_URL/api/chat" \
   -H "Content-Type: application/json" \
   -H "X-User-Id: $USER_ID" \
-  -d '{"content":"你好，请帮我创建一个任务：学习TypeScript"}' 2>/dev/null || echo '__CURL_FAILED__')
+  -d "{\"convId\":\"$CONV_ID\",\"content\":\"你好，请帮我创建一个任务：学习TypeScript\"}" 2>/dev/null || echo '__CURL_FAILED__')
 if [ "$CHAT_RESP" = "__CURL_FAILED__" ]; then
   log_skip "7. Chat message (LLM API unavailable or error)"
 else
@@ -208,7 +208,7 @@ fi
 echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
 
 # --- 14. Get messages ---
-RESP=$(curl -sf --fail-with-body "$BASE_URL/api/conversations/$CONV_ID/messages" 2>/dev/null || echo '[]')
+RESP=$(curl -sf --fail-with-body "$BASE_URL/api/conversations/messages?id=$CONV_ID" 2>/dev/null || echo '[]')
 if echo "$RESP" | jq -e 'type == "array"' >/dev/null 2>&1; then
   log_pass "14. Get messages"
 else

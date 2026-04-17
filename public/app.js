@@ -144,7 +144,7 @@ async function checkAuth() {
     try {
         state.userId = parseInt(storedId);
         state.userName = storedName;
-        const res = await api('GET', `/user/${state.userId}`);
+        const res = await api('GET', `/user?id=${state.userId}`);
         state.userName = res.name;
         state.aiNickname = res.ai_nickname;
         localStorage.setItem(LS_USER_NAME, res.name);
@@ -258,7 +258,7 @@ async function loadMessages() {
     show(msgs);
     setInputEnabled(true);
     try {
-        const messages = await api('GET', `/conversations/${state.currentConvId}/messages`);
+        const messages = await api('GET', `/conversations/messages?id=${state.currentConvId}`);
         renderMessages(messages);
     } catch {
         showError('Failed to load messages', loadMessages);
@@ -379,9 +379,6 @@ function updateToolCallBadge(callId, result, isError = false) {
     const resultEl = badge.querySelector('.tool-call-result');
     resultEl.textContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     if (isError) badge.classList.add('error');
-    const toggle = badge.querySelector('.tool-call-toggle');
-    show(resultEl);
-    toggle.classList.add('expanded');
     scrollToBottom();
 }
 
@@ -409,16 +406,19 @@ async function sendMessage() {
     let assistantEl = null;
     let assistantBubble = null;
     let fullText = '';
+    let hadToolCalls = false;
+    let round2Bubble = null;
+    let round2Text = '';
 
     try {
         state.abortController = new AbortController();
-        const res = await fetch(`/api/chat/${state.currentConvId}`, {
+        const res = await fetch(`/api/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-User-Id': String(state.userId),
             },
-            body: JSON.stringify({ content }),
+            body: JSON.stringify({ convId: state.currentConvId, content }),
             signal: state.abortController.signal,
         });
 
@@ -455,8 +455,20 @@ async function sendMessage() {
                                 assistantEl = appendAssistantMessage('');
                                 assistantBubble = assistantEl.querySelector('.message-bubble');
                             }
-                            fullText += event.content;
-                            assistantBubble.textContent = fullText;
+                            if (hadToolCalls && !round2Bubble) {
+                                const body = assistantEl.querySelector('.message-body');
+                                round2Bubble = document.createElement('div');
+                                round2Bubble.className = 'message-bubble';
+                                body.appendChild(round2Bubble);
+                                round2Text = event.content;
+                                round2Bubble.textContent = round2Text;
+                            } else if (round2Bubble) {
+                                round2Text += event.content;
+                                round2Bubble.textContent = round2Text;
+                            } else {
+                                fullText += event.content;
+                                assistantBubble.textContent = fullText;
+                            }
                             scrollToBottom();
                             break;
                         case 'tool_call':
@@ -465,6 +477,7 @@ async function sendMessage() {
                                 assistantEl = appendAssistantMessage(fullText);
                                 assistantBubble = assistantEl.querySelector('.message-bubble');
                             }
+                            hadToolCalls = true;
                             addToolCallBadge(
                                 assistantEl.querySelector('.message-body'),
                                 event.name,
