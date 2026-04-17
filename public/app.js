@@ -79,7 +79,9 @@ function showPanel(name) {
 
 function scrollToBottom() {
     const msgs = $('#messages');
-    requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
+    });
 }
 
 function autoResizeInput() {
@@ -527,6 +529,7 @@ async function sendMessage() {
                         case 'tool_result':
                             if (statusEl) { statusEl.remove(); statusEl = null; }
                             updateToolCallBadge(event.call_id, event.result);
+                            scrollToBottom();
                             break;
                         case 'status':
                             if (statusEl) statusEl.remove();
