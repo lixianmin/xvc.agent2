@@ -61,7 +61,7 @@ User message → [LLM call] → parse response
 | `task_delete` | Delete task | D1 |
 | `web_search` | Serper web search | Serper API |
 | `web_fetch` | Fetch and extract URL content | HTTP |
-| `file_upload` | Upload file to workspace (triggers async parse→chunk→embed) | R2 + D1 + Qdrant |
+| `file_upload` | Upload file to workspace (triggers parse→chunk→embed) | R2 + D1 + Qdrant |
 | `file_list` | List workspace files | D1 |
 | `file_delete` | Delete file and its chunks | R2 + D1 + Qdrant |
 | `chunks_search` | Unified search (keyword + vector hybrid, RRF fusion) | D1 FTS5 + Qdrant |
