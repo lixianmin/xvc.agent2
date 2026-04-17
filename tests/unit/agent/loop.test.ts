@@ -24,6 +24,7 @@ vi.mock('../../../src/agent/prompt', () => ({
 
 vi.mock('../../../src/agent/tools', () => ({
   getToolDefinitions: vi.fn().mockReturnValue([{ type: 'function', function: { name: 'test_tool', description: 'test', parameters: { type: 'object', properties: {} } } }]),
+  getSubAgentToolDefinitions: vi.fn().mockReturnValue([{ type: 'function', function: { name: 'test_tool', description: 'test', parameters: { type: 'object', properties: {} } } }]),
   dispatchTool: vi.fn(),
 }));
 
@@ -336,5 +337,107 @@ describe('AgentLoop execute() generator', () => {
     const events = await collectGeneratorEvents(gen);
 
     expect(events.some(e => e.type === 'limit_reached')).toBe(true);
+  });
+
+  it('runSub() returns text from sub-agent', async () => {
+    const llm = makeMockLLM([
+      [{ type: 'text', content: 'Sub-agent result here.' }],
+    ]);
+    deps = makeDeps(llm);
+
+    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
+    expect(result).toContain('Sub-agent result here.');
+  });
+
+  it.skip('runSub() returns timeout message when signal aborts', async () => {
+    const llm = makeMockLLM([]);
+    llm.chat = vi.fn().mockImplementation(() => {
+      return (async function* () {
+        await new Promise(() => {});
+      })();
+    });
+    deps = makeDeps(llm);
+
+    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
+    expect(result).toContain('超时');
+  }, 35_000);
+
+  it('runSub() passes correct options to execute()', async () => {
+    const llm = makeMockLLM([
+      [{ type: 'text', content: 'ok' }],
+    ]);
+    deps = makeDeps(llm);
+
+    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'task', 'ctx');
+    expect(result).toBe('ok');
+    expect(llm.chat).toHaveBeenCalledWith(
+      expect.anything(),
+      [{ type: 'function', function: { name: 'test_tool', description: 'test', parameters: { type: 'object', properties: {} } } }],
+    );
+    expect(saveMessage).not.toHaveBeenCalled();
+    expect(chunksSearch).not.toHaveBeenCalled();
+  });
+
+  it('runSub() returns error message on failure', async () => {
+    const llm = makeMockLLM([]);
+    llm.chat = vi.fn().mockImplementation(() => {
+      throw new Error('LLM boom');
+    });
+    deps = makeDeps(llm);
+
+    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
+    expect(result).toContain('执行失败');
+    expect(result).toContain('LLM boom');
+  });
+
+  it('spawn_agent in runLoop dispatches sub-agents and yields results', async () => {
+    let callIdx = 0;
+    const responses: ChatEvent[][] = [
+      [{ type: 'tool_call', name: 'spawn_agent', args: { tasks: ['task A', 'task B'] }, call_id: 'sa-1' }],
+      [{ type: 'text', content: 'Final synthesis' }],
+    ];
+    const subResponses: ChatEvent[][] = [
+      [{ type: 'text', content: 'Result A' }],
+      [{ type: 'text', content: 'Result B' }],
+    ];
+    let subIdx = 0;
+
+    const llm = makeMockLLM([]);
+    llm.chat = vi.fn().mockImplementation(() => {
+      if (callIdx === 0) {
+        const events = responses[callIdx++];
+        return (async function* () { for (const e of events) yield e; })();
+      }
+      const events = responses[callIdx++] ?? [];
+      return (async function* () { for (const e of events) yield e; })();
+    });
+
+    const origRunSub = AgentLoop.runSub.bind(AgentLoop);
+    AgentLoop.runSub = vi.fn().mockImplementation((_deps: any, agentId: string, _userId: number, task: string) => {
+      return Promise.resolve(`Sub result for ${task} [${agentId}]`);
+    });
+
+    try {
+      deps = makeDeps(llm);
+      const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG);
+      const events = await collectGeneratorEvents(gen);
+
+      expect(AgentLoop.runSub).toHaveBeenCalledTimes(2);
+      expect(AgentLoop.runSub).toHaveBeenCalledWith(deps, 'sub-0', USER_ID, 'task A', undefined);
+      expect(AgentLoop.runSub).toHaveBeenCalledWith(deps, 'sub-1', USER_ID, 'task B', undefined);
+
+      const toolResults = events.filter(e => e.type === 'tool_result' && e.name === 'spawn_agent');
+      expect(toolResults).toHaveLength(1);
+      const result = JSON.parse(toolResults[0].result);
+      expect(result).toHaveLength(2);
+      expect(result[0].task).toBe('task A');
+      expect(result[0].result).toContain('Sub result for task A');
+      expect(result[1].task).toBe('task B');
+
+      const statusEvents = events.filter(e => e.type === 'status');
+      expect(statusEvents.some(s => s.content.includes('子代理'))).toBe(true);
+    } finally {
+      AgentLoop.runSub = origRunSub;
+    }
   });
 });

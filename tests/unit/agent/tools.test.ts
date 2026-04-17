@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getToolDefinitions, dispatchTool } from '../../../src/agent/tools';
+import { getToolDefinitions, getSubAgentToolDefinitions, dispatchTool } from '../../../src/agent/tools';
 import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument } from '../../../src/dao/d1';
 import { serperSearch, fetchUrl } from '../../../src/services/web';
 import { chunksSearch } from '../../../src/services/search';
@@ -41,7 +41,7 @@ function makeDeps() {
 describe('getToolDefinitions', () => {
   it('returns 9 tools with correct names', () => {
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(9);
+    expect(defs).toHaveLength(10);
 
     const names = defs.map((d) => d.function.name);
     expect(names).toContain('task_create');
@@ -53,6 +53,7 @@ describe('getToolDefinitions', () => {
     expect(names).toContain('file_list');
     expect(names).toContain('file_delete');
     expect(names).toContain('chunks_search');
+    expect(names).toContain('spawn_agent');
   });
 
   it('each tool has OpenAI function calling format', () => {
@@ -64,6 +65,23 @@ describe('getToolDefinitions', () => {
       expect(def.function.parameters.type).toBe('object');
       expect(def.function.parameters.properties).toBeDefined();
     }
+  });
+});
+
+describe('getSubAgentToolDefinitions', () => {
+  it('excludes spawn_agent from tool list', () => {
+    const defs = getSubAgentToolDefinitions();
+    const names = defs.map((d) => d.function.name);
+    expect(names).not.toContain('spawn_agent');
+    expect(names).toContain('task_create');
+    expect(names).toContain('web_search');
+    expect(names).toContain('chunks_search');
+  });
+
+  it('has exactly one fewer tool than full set', () => {
+    const full = getToolDefinitions();
+    const sub = getSubAgentToolDefinitions();
+    expect(sub.length).toBe(full.length - 1);
   });
 });
 
