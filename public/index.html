@@ -60,7 +60,33 @@
             <main id="main-area" class="main-area">
                 <div id="chat-panel" class="panel">
                     <div id="empty-state" class="empty-state">
-                        <p>Select a thread or start a new chat</p>
+                        <div id="welcome-content" class="welcome-content hidden">
+                            <h2 id="welcome-greeting" class="welcome-greeting"></h2>
+                            <p class="welcome-subtitle">我可以帮你做这些事情：</p>
+                            <div class="welcome-cards">
+                                <div class="welcome-card" data-message="帮我创建一个高优先级任务：完成季度报告">
+                                    <span class="card-icon">📋</span>
+                                    <h3>任务管理</h3>
+                                    <p>创建、查看、更新和删除任务</p>
+                                </div>
+                                <div class="welcome-card" data-message="搜索一下最新的 AI Agent 框架对比">
+                                    <span class="card-icon">🔍</span>
+                                    <h3>网络搜索</h3>
+                                    <p>搜索互联网获取最新信息</p>
+                                </div>
+                                <div class="welcome-card" data-message="帮我查一下项目中关于部署的文档">
+                                    <span class="card-icon">📄</span>
+                                    <h3>文档检索</h3>
+                                    <p>在已上传的文档中搜索相关内容</p>
+                                </div>
+                                <div class="welcome-card" data-message="帮我抓取并总结这个网页的内容：https://example.com">
+                                    <span class="card-icon">🌐</span>
+                                    <h3>网页抓取</h3>
+                                    <p>抓取指定URL的内容并分析</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p id="empty-state-fallback" class="empty-state-fallback">Select a thread or start a new chat</p>
                     </div>
                     <div id="messages" class="messages hidden"></div>
                     <div class="input-area">

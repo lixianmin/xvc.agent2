@@ -340,6 +340,72 @@ html, body {
     justify-content: center;
     color: var(--text-muted);
     font-size: 15px;
+    flex-direction: column;
+}
+
+.welcome-content {
+    text-align: center;
+    max-width: 560px;
+    width: 100%;
+    padding: 0 16px;
+}
+
+.welcome-greeting {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 4px;
+}
+
+.welcome-subtitle {
+    color: var(--text-muted);
+    margin: 0 0 20px;
+    font-size: 14px;
+}
+
+.welcome-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.welcome-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.welcome-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-icon {
+    font-size: 24px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.welcome-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: var(--text);
+}
+
+.welcome-card p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
+}
+
+.empty-state-fallback {
+    margin: 0;
 }
 
 .messages {
@@ -791,5 +857,9 @@ html, body {
     .registration-container {
         margin: 16px;
         padding: 32px 24px;
+    }
+
+    .welcome-cards {
+        grid-template-columns: 1fr;
     }
 }

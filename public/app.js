@@ -207,7 +207,7 @@ async function createThread() {
         state.threads.unshift(thread);
         state.currentThreadId = thread.id;
         renderThreads();
-        activateChat();
+        showWelcomeCards();
     } catch (err) {
         showError('Failed to create thread');
     }
@@ -239,8 +239,23 @@ async function removeThread(id) {
 function showEmptyState() {
     showPanel('chat');
     show($('#empty-state'));
+    hide($('#welcome-content'));
+    show($('#empty-state-fallback'));
     hide($('#messages'));
     setInputEnabled(false);
+}
+
+function showWelcomeCards() {
+    showPanel('chat');
+    show($('#empty-state'));
+    hide($('#empty-state-fallback'));
+    show($('#welcome-content'));
+    hide($('#messages'));
+    const userName = state.userName || 'User';
+    const aiName = state.aiNickname || 'AI';
+    $('#welcome-greeting').textContent = `你好，${userName}！我是${aiName}`;
+    setInputEnabled(true);
+    $('#message-input').focus();
 }
 
 function activateChat() {
@@ -697,6 +712,16 @@ function bindEvents() {
     $('#registration-form').addEventListener('submit', register);
     $('#new-chat-btn').addEventListener('click', createThread);
     $('#sidebar-toggle').addEventListener('click', toggleSidebar);
+
+    document.querySelectorAll('.welcome-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const msg = card.getAttribute('data-message');
+            if (msg && !state.isStreaming) {
+                $('#message-input').value = msg;
+                sendMessage();
+            }
+        });
+    });
 
     $('#message-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
