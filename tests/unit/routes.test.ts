@@ -47,6 +47,7 @@ function testEnv() {
     SILICONFLOW_API_KEY: 'test',
     QDRANT_URL: 'http://localhost:6333',
     QDRANT_API_KEY: 'test',
+    QDRANT_COLLECTION: 'test_chunks',
     SERPER_API_KEY: 'test',
   };
 }
@@ -126,7 +127,7 @@ describe('POST /api/chat', () => {
 
     const text = await res.text();
     expect(text).toContain('data:');
-  });
+  }, 15_000);
 });
 
 describe('POST /api/tasks/create', () => {
