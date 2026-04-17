@@ -11,5 +11,9 @@ database_id = "TBD"
 binding = "FILES"
 bucket_name = "xvc-agent2-files"
 
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
 [triggers]
 crons = ["*/5 * * * *"]

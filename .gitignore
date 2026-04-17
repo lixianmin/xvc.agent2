@@ -4,4 +4,6 @@ dist/
 .dev.vars
 *.log
 *.env
-.DS_Store
+.DS_Storelogs/*.json
+logs/*.txt
+logs/*.log

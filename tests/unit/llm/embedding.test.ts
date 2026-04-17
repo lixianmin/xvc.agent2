@@ -8,7 +8,7 @@ describe('EmbeddingClient', () => {
   beforeEach(() => {
     fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
-    client = new EmbeddingClient({ apiKey: 'test-key', baseUrl: 'https://api.example.com', model: 'embedding-3' });
+    client = new EmbeddingClient({ apiKey: 'test-key', baseUrl: 'https://api.example.com/v1', model: 'embedding-3' });
   });
 
   it('embeds texts and returns vectors', async () => {

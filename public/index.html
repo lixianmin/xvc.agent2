@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Task Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="error-banner" class="error-banner hidden">
+        <span id="error-message"></span>
+        <button id="error-retry" class="error-retry-btn">Retry</button>
+        <button id="error-close" class="error-close-btn">&times;</button>
+    </div>
+
+    <div id="registration-view" class="view">
+        <div class="registration-container">
+            <h1>AI Task Assistant</h1>
+            <p class="registration-subtitle">Get started by creating your account</p>
+            <form id="registration-form">
+                <div class="form-group">
+                    <label for="reg-name">Name</label>
+                    <input type="text" id="reg-name" placeholder="Your name" required autocomplete="name">
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" placeholder="your@email.com" required autocomplete="email">
+                </div>
+                <div id="reg-error" class="form-error hidden"></div>
+                <button type="submit" id="reg-submit" class="btn-primary">Get Started</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="main-view" class="view hidden">
+        <header class="header">
+            <div class="header-left">
+                <button id="sidebar-toggle" class="icon-btn mobile-only" aria-label="Toggle sidebar">&#9776;</button>
+                <h1 class="header-title">AI Task Assistant</h1>
+            </div>
+            <div class="header-right">
+                <button id="workspace-btn" class="icon-btn" title="Workspace" aria-label="Workspace">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                </button>
+                <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="app-layout">
+            <aside id="sidebar" class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Conversations</h2>
+                    <button id="new-chat-btn" class="icon-btn" title="New Chat" aria-label="New chat">+</button>
+                </div>
+                <div id="conversation-list" class="conversation-list"></div>
+            </aside>
+
+            <main id="main-area" class="main-area">
+                <div id="chat-panel" class="panel">
+                    <div id="empty-state" class="empty-state">
+                        <p>Select a conversation or start a new chat</p>
+                    </div>
+                    <div id="messages" class="messages hidden"></div>
+                    <div class="input-area">
+                        <textarea id="message-input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)" rows="1" disabled></textarea>
+                        <button id="send-btn" class="send-btn" disabled aria-label="Send message">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="workspace-panel" class="panel hidden">
+                    <div class="workspace-header">
+                        <h2>Workspace</h2>
+                    </div>
+                    <div id="file-list" class="file-list"></div>
+                    <div id="upload-area" class="upload-area">
+                        <div class="upload-content">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <p>Drag &amp; drop files here or click to upload</p>
+                            <p class="upload-hint">Supports PDF, DOCX, TXT and more</p>
+                        </div>
+                        <input type="file" id="file-input" multiple hidden>
+                    </div>
+                    <div id="upload-progress" class="upload-progress hidden">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                        <span id="progress-text">Uploading...</span>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button id="close-settings" class="icon-btn" aria-label="Close settings">&times;</button>
+            </div>
+            <form id="settings-form">
+                <div class="form-group">
+                    <label for="settings-name">Name</label>
+                    <input type="text" id="settings-name">
+                </div>
+                <div class="form-group">
+                    <label for="ai-nickname">AI Nickname</label>
+                    <input type="text" id="ai-nickname" placeholder="e.g., Jarvis, Alice">
+                </div>
+                <div id="settings-error" class="form-error hidden"></div>
+                <button type="submit" class="btn-primary">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

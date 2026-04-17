@@ -1,3 +1,5 @@
+import { log } from '../services/logger';
+
 export type ChatEvent =
   | { type: 'text'; content: string }
   | { type: 'tool_call'; name: string; args: Record<string, unknown>; call_id: string }
@@ -7,11 +9,19 @@ export class LLMClient {
   constructor(private config: { apiKey: string; baseUrl: string; model: string }) {}
 
   async *chat(messages: Message[], tools?: ToolDef[]): AsyncGenerator<ChatEvent> {
-    const url = `${this.config.baseUrl}/v1/chat/completions`;
+    const url = `${this.config.baseUrl}/chat/completions`;
     const body: Record<string, unknown> = { model: this.config.model, messages, stream: true };
     if (tools?.length) body.tools = tools;
 
-    console.log('[agent] LLM call started');
+    log.info('llm', 'LLM request', {
+      url,
+      model: this.config.model,
+      msgCount: messages.length,
+      toolCount: tools?.length ?? 0,
+      messages: messages.map(m => ({ role: m.role, contentLen: m.content?.length ?? 0, hasToolCalls: !!m.tool_calls, hasToolCallId: !!m.tool_call_id })),
+      requestBody: body,
+    });
+
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -22,11 +32,15 @@ export class LLMClient {
     });
 
     if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      log.error('llm', 'LLM API error', { status: res.status, statusText: res.statusText, errorBody: errorBody.slice(0, 2000) });
       throw new Error(`LLM API error: ${res.status} ${res.statusText}`);
     }
 
     const text = await res.text();
     const toolAccum = new Map<number, { id: string; name: string; args: string }>();
+    let textChunks = 0;
+    let toolCallCount = 0;
 
     for (const block of text.split('\n\n')) {
       const line = block.trim();
@@ -41,6 +55,7 @@ export class LLMClient {
       if (!choice) continue;
 
       if (choice.delta?.content) {
+        textChunks++;
         yield { type: 'text', content: choice.delta.content };
       }
 
@@ -62,6 +77,7 @@ export class LLMClient {
         for (const [, acc] of toolAccum) {
           let args: Record<string, unknown> = {};
           try { args = JSON.parse(acc.args); } catch { /* empty */ }
+          toolCallCount++;
           yield { type: 'tool_call', name: acc.name, args, call_id: acc.id };
         }
         toolAccum.clear();
@@ -71,10 +87,11 @@ export class LLMClient {
     for (const [, acc] of toolAccum) {
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(acc.args); } catch { /* empty */ }
+      toolCallCount++;
       yield { type: 'tool_call', name: acc.name, args, call_id: acc.id };
     }
 
-    console.log('[agent] LLM call completed');
+    log.info('llm', 'LLM response done', { textChunks, toolCallCount });
   }
 }
 
@@ -87,6 +104,7 @@ export interface Message {
 
 export interface ToolCall {
   id: string;
+  type: 'function';
   function: { name: string; arguments: string };
 }
 
