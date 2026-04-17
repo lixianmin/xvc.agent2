@@ -18,6 +18,7 @@ type Bindings = {
   SILICONFLOW_API_KEY: string;
   QDRANT_URL: string;
   QDRANT_API_KEY: string;
+  QDRANT_COLLECTION: string;
   SERPER_API_KEY: string;
 };
 
@@ -94,7 +95,7 @@ app.post('/api/chat', authMiddleware, async (c) => {
     d1: c.env.DB,
     llm: new LLMClient({ apiKey: c.env.GLM_API_KEY, baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', model: 'GLM-5' }),
     embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' }),
-    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY }),
+    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
     serperApiKey: c.env.SERPER_API_KEY,
   };
 
@@ -137,7 +138,7 @@ app.post('/api/files/upload', authMiddleware, async (c) => {
   const doc = await processFileUpload({
     r2: c.env.FILES,
     d1: c.env.DB,
-    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY }),
+    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
     embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' }),
     userId: user.id,
   }, file);
@@ -169,7 +170,7 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
         const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE id = ?').bind(event.chunk_id).first<any>();
         if (chunk) {
           const embedding = new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn', model: 'BAAI/bge-m3' });
-          const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY });
+          const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
           const [vector] = await embedding.embed([chunk.content]);
           await qdrant.upsertVectors([{
             id: String(chunk.id),

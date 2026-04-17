@@ -12,9 +12,11 @@ type SearchResult = {
 };
 
 export class QdrantDAO {
-  private collectionName = 'chunks';
+  private collectionName: string;
 
-  constructor(private config: { url: string; apiKey: string }) {}
+  constructor(private config: { url: string; apiKey: string; collection?: string }) {
+    this.collectionName = config.collection ?? 'chunks';
+  }
 
   private headers(): Record<string, string> {
     return {
@@ -42,11 +44,12 @@ export class QdrantDAO {
   }
 
   async upsertVectors(points: QdrantPoint[]): Promise<void> {
-    await fetch(this.collectionUrl('/points'), {
+    const res = await fetch(this.collectionUrl('/points'), {
       method: 'PUT',
       headers: this.headers(),
       body: JSON.stringify({ points }),
     });
+    if (!res.ok) throw new Error(`Qdrant upsert failed: ${res.status}`);
   }
 
   async searchVectors(query: number[], userId: number, limit: number, withVector = false): Promise<SearchResult[]> {
@@ -62,6 +65,7 @@ export class QdrantDAO {
       headers: this.headers(),
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Qdrant search failed: ${res.status}`);
     const data = await res.json();
     return data.result;
   }

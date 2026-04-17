@@ -82,4 +82,36 @@ describe('Qdrant DAO', () => {
     expect(headers['api-key']).toBe('test-key');
     expect(headers['Content-Type']).toBe('application/json');
   });
+
+  it('uses custom collection name when provided', async () => {
+    const customDao = new QdrantDAO({ url: 'http://localhost:6333', apiKey: 'test-key', collection: 'xvc_agent_chunks' });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: { status: 'green' } }) });
+    await customDao.ensureCollection();
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:6333/collections/xvc_agent_chunks');
+  });
+
+  it('defaults collection name to "chunks" when not provided', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: { status: 'green' } }) });
+    await dao.ensureCollection();
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:6333/collections/chunks');
+  });
+
+  it('searchVectors throws on non-ok response', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ status: { error: 'Not found' } }),
+    });
+    await expect(dao.searchVectors([0.1], 1, 5)).rejects.toThrow(/Qdrant search failed.*404/);
+  });
+
+  it('upsertVectors throws on non-ok response', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ status: { error: 'Internal' } }),
+    });
+    await expect(dao.upsertVectors([{ id: '1', vector: [0.1], payload: {} }]))
+      .rejects.toThrow(/Qdrant upsert failed.*500/);
+  });
 });
