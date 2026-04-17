@@ -8,6 +8,14 @@ import { chunksSearch } from '../services/search';
 import { log } from '../services/logger';
 import { config } from '../config';
 
+export type AgentEvent =
+  | { type: 'status'; content: string }
+  | { type: 'text'; content: string }
+  | { type: 'tool_call'; name: string; args: Record<string, unknown>; call_id: string }
+  | { type: 'tool_result'; name: string; call_id: string; result: string }
+  | { type: 'error'; content: string }
+  | { type: 'limit_reached'; content: string };
+
 export type AgentDeps = {
   d1: D1Database;
   llm: LLMClient;
