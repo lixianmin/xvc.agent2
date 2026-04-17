@@ -433,12 +433,13 @@ For MVP: skip LLM query expansion (steps 3, 5). Only fuse FTS5 + Qdrant results 
 
 ### System Prompt Construction
 
-Dynamic prompt built per request:
-1. Base instructions (role, capabilities, guidelines)
-2. User info (name, AI nickname)
-3. Current date
-4. Available tools (JSON schema)
-5. RAG context (only if chunks_search was triggered via tool call in a previous round of the same request)
+Prompt assembled in order (tools first for prefix caching stability):
+
+1. **Available tools** (JSON schema) — fixed content, stable for prefix caching
+2. **Base instructions** (role, capabilities, guidelines) — fixed content
+3. **User info** (name, AI nickname) — changes rarely
+4. **Current datetime** (精确到秒，如 `2025-04-17 14:30:00 CST`) — changes every request
+5. **RAG context** (only if chunks_search was triggered via tool call in a previous round of the same request) — variable
 
 ### Context Management
 
