@@ -40,16 +40,21 @@ Frontend load → Check localStorage for userId
 ```
 User message → [LLM call] → parse response
                               ↓
-                 has tool_calls? → dispatch tools → inject results → [LLM call]
+                 has tool_calls? → dispatch ALL tools → inject results → [LLM call]
                  no tool_calls?  → stream text response to user
 ```
+
+**Key**: A single LLM response may produce **multiple tool_calls** (e.g., 5-8 calls). All are dispatched and executed, then all results are injected back before the next LLM call. This is not one-tool-per-turn — it's batch execution per LLM response.
+
+Reference: generic-agent `agent_runner_loop` (agent_loop.py:118-242) — iterates `tool_calls` list from response, dispatches each, collects outcomes.
 
 ### Implementation
 
 - `AgentLoop` class, method `run(userId, conversationId, userMessage)` returns `ReadableStream` (SSE)
-- SSE events: `{ type: "text" | "tool_call" | "tool_result", ... }`
-- Max 30 tool-calling rounds per request
-- System prompt dynamically built: user info + tool descriptions + date + relevant chunks from RAG
+- Each LLM response may contain 0-N tool_calls. When N > 0, all N tools execute, results stream back, then next LLM call happens
+- "Round" = one LLM call + its tool executions. Max 30 rounds
+- SSE events stream tool_call/tool_result as they happen (not batched)
+- System prompt dynamically built per section below
 
 ### Tools
 
@@ -443,49 +448,72 @@ Prompt assembled in order (tools first for prefix caching stability):
 
 ### Context Management
 
-- Send: system prompt + recent messages within token budget (~8000 tokens)
-- **Message selection**: Load messages newest-first, accumulate until token budget reached. Always include complete assistant(tool_calls)→tool(tool_call_id) chains (never split them)
-- **Token estimation**: ~4 chars per token (rough estimate for Chinese+English mixed content)
-- **Context reconstruction from DB**: Each DB row maps directly to one LLM message. `role='assistant'` rows with `tool_calls` JSON are sent as assistant messages with tool_calls. `role='tool'` rows are sent as tool messages with `tool_call_id`. No parsing/transforming needed.
-- No summary compression in MVP
+Reference: generic-agent's `trim_messages_history` (llmcore.py:74-86) and `compress_history_tags` (llmcore.py:23-54).
+
+**Budget**: ~8000 tokens for message history (system prompt excluded from this budget)
+
+**Message selection**:
+1. Load messages from DB ordered by `created_at DESC`
+2. Accumulate newest-first until token budget reached
+3. **Always keep complete tool chains**: if an `assistant` row with `tool_calls` is included, all associated `tool` rows must be included. Never split a tool_call→tool_result chain
+4. If trimming would split a chain, include the entire chain or exclude it entirely
+5. Safety floor: always keep at least the last user message + last assistant response
+
+**Token estimation**: ~4 chars per token (Chinese+English mixed)
+
+**Context reconstruction**: Each DB row maps to one LLM message:
+- `role='user'` → user message
+- `role='assistant'` with `tool_calls` JSON → assistant message with tool_calls array
+- `role='tool'` with `tool_call_id` → tool message linked to the corresponding tool_call
+
+**Trimming** (when total exceeds budget):
+1. Drop oldest messages first (from front of history)
+2. If dropping creates orphaned tool results (tool_call removed but tool_result remains), convert orphaned tool_result to plain text and append to nearest user message
+3. Never trim below the safety floor
+
+**Tool schema caching**: Tool definitions are in the fixed system prompt prefix (see System Prompt Construction), so they benefit from prefix caching automatically. No need for generic-agent's `last_tools` rotation pattern.
+
+**No summary compression in MVP** — future: add running summary like generic-agent's `history_info` + `<summary>` protocol to compress older turns.
 
 ---
 
-## 9. API Routes (Hono)
+## 9. API Routes (Hono) — RPC Style
+
+All routes use GET for reads, POST for writes. No PUT, no DELETE.
 
 ```
 # User
-POST   /api/user                    # Body: { email, name } → { id, email, name }
-GET    /api/user/:id                # → { id, email, name, ai_nickname }
-PUT    /api/user/:id                # Body: { name?, ai_nickname? } → updated user
+POST   /api/user/create              # Body: { email, name } → { id, email, name }
+GET    /api/user/:id                  # → { id, email, name, ai_nickname }
+POST   /api/user/update              # Body: { id, name?, ai_nickname? } → updated user
 
 # Conversations
-GET    /api/conversations           # Query: ?userId= → [{ id, title, created_at }]
-POST   /api/conversations           # Body: { userId, title? } → { id, title }
+GET    /api/conversations/list        # Query: ?userId= → [{ id, title, created_at }]
+POST   /api/conversations/create      # Body: { userId, title? } → { id, title }
 GET    /api/conversations/:id/messages  # Query: ?limit=&before= → [{ id, role, content, ... }]
-DELETE /api/conversations/:id       # → 204
+POST   /api/conversations/delete      # Body: { id } → { ok: true }
 
 # Chat (core)
-POST   /api/chat/:convId            # Body: { content: string } Headers: X-User-Id
+POST   /api/chat/:convId              # Body: { content: string } Headers: X-User-Id
                                     # → SSE stream of ChatEvent
 
 # Tasks
-GET    /api/tasks                   # Query: ?userId=&status= → [{ id, title, ... }]
-POST   /api/tasks                   # Body: { userId, title, description?, priority? }
-PUT    /api/tasks/:id               # Body: { title?, description?, status?, priority? }
-DELETE /api/tasks/:id               # → 204
+GET    /api/tasks/list                # Query: ?userId=&status= → [{ id, title, ... }]
+POST   /api/tasks/create              # Body: { userId, title, description?, priority? }
+POST   /api/tasks/update              # Body: { id, title?, description?, status?, priority? }
+POST   /api/tasks/delete              # Body: { id } → { ok: true }
 
 # Files
-POST   /api/files/upload            # FormData: { file, userId } → { id, filename, ... }
-GET    /api/files                   # Query: ?userId= → [{ id, filename, size, ... }]
-DELETE /api/files/:id               # → 204 (also removes chunks + Qdrant vectors)
+POST   /api/files/upload              # FormData: { file, userId } → { id, filename, ... }
+GET    /api/files/list                # Query: ?userId= → [{ id, filename, size, ... }]
+POST   /api/files/delete              # Body: { id } → { ok: true } (also removes chunks + Qdrant vectors)
 
 # Admin (testing)
-POST   /api/admin/process-outbox    # → { processed: number }
-GET    /api/admin/outbox-status     # → { pending, processing, failed, completed }
+POST   /api/admin/process-outbox      # → { processed: number }
+GET    /api/admin/outbox-status       # → { pending, processing, failed, completed }
 
 # Static
-GET    /*                           # Frontend HTML/JS/CSS
+GET    /*                             # Frontend HTML/JS/CSS
 ```
 
 ### ChatEvent SSE Format
