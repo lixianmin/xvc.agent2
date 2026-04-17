@@ -48,11 +48,14 @@ CREATE TABLE IF NOT EXISTS documents (
 
 CREATE TABLE IF NOT EXISTS chunks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    seq INTEGER NOT NULL,
+    doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    seq INTEGER NOT NULL DEFAULT 0,
     content TEXT NOT NULL,
-    token_count INTEGER NOT NULL,
-    UNIQUE(doc_id, seq)
+    token_count INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'document',
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -77,4 +80,5 @@ CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_thread_created ON messages(thread_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_user ON chunks(user_id);
 CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_events(status, created_at);

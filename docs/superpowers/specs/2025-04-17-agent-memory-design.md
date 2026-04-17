@@ -53,24 +53,37 @@ Reuses existing `chunks` table and Qdrant. New columns distinguish chat memories
 D1 (SQLite) does not support `ALTER COLUMN`. Since `doc_id` is currently `NOT NULL`, we must recreate the table with the new columns and relaxed constraint. Migration:
 
 ```sql
+-- Step 1: Create new table with relaxed doc_id and new columns
 CREATE TABLE chunks_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    doc_id INTEGER REFERENCES documents(id),  -- nullable for chat memories
+    doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL,
     seq INTEGER NOT NULL,
     content TEXT NOT NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
     source TEXT NOT NULL DEFAULT 'document',   -- 'document' | 'chat'
     expires_at TEXT,                            -- NULL = never expire
     created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
-INSERT INTO chunks_new SELECT id, doc_id, user_id, seq, content, 'document', NULL, created_at FROM chunks;
+
+-- Step 2: Copy existing data
+INSERT INTO chunks_new (id, doc_id, user_id, seq, content, token_count, source, expires_at, created_at)
+  SELECT id, doc_id, user_id, seq, content, token_count, 'document', NULL, datetime('now', '+8 hours')
+  FROM chunks;
+
+-- Step 3: Drop old table and rename
 DROP TABLE chunks;
 ALTER TABLE chunks_new RENAME TO chunks;
 
--- Recreate FTS index
-CREATE VIRTUAL TABLE chunks_fts USING fts5(content, content=chunks, content_rowid=id, tokenize='unicode61');
+-- Step 4: Recreate FTS index
+CREATE VIRTUAL TABLE chunks_fts USING fts5(content, content=chunks, content_rowid=id, tokenize='porter unicode61');
 INSERT INTO chunks_fts(rowid, content) SELECT id, content FROM chunks;
+
+-- Step 5: Recreate indexes
+CREATE INDEX IF NOT EXISTS idx_chunks_user ON chunks(user_id);
 ```
+
+**Chat memory `doc_id` and `seq` handling:** Chat memories have `doc_id = NULL` and `seq = 0`. The original `UNIQUE(doc_id, seq)` constraint is removed since chat memories all share `doc_id=NULL`. Document chunks still enforce uniqueness via application logic.
 
 | Field | Document chunk | Chat memory |
 |-------|---------------|-------------|
@@ -93,8 +106,9 @@ INSERT INTO chunks_fts(rowid, content) SELECT id, content FROM chunks;
 In `do_memory_save`, for each new memory item:
 1. Embed the content using EmbeddingClient
 2. Search Qdrant for existing chat memories with cosine similarity > 0.95
-3. If a highly similar memory exists: **update** its content, category, and expires_at (in both chunks table and Qdrant). This handles users restating preferences in new words.
-4. If not: insert new row into chunks + new vector into Qdrant
+3. **Dedup only checks `source='chat'` vectors.** Legacy document vectors lack `source` field entirely, so checking `r.payload.source === 'chat'` safely skips them (undefined !== 'chat').
+4. If a highly similar memory exists: **update** its content, category, and expires_at (in both chunks table and Qdrant). This handles users restating preferences in new words.
+5. If not: insert new row into chunks + new vector into Qdrant
 
 ### 7. Search Adaptation
 
@@ -231,7 +245,17 @@ function getExpiresAt(category: string): string | null {
 }
 ```
 
-### 10. Data Flow
+### 10. Outbox Consistency
+
+Document uploads use the outbox pattern (main spec §4) for D1↔Qdrant dual-write. Chat memories skip the outbox and do synchronous dual-write. Rationale:
+
+- Document uploads are user-initiated with a progress bar — outbox retry is important
+- Memory saves happen during agent loop — if Qdrant write fails, the tool returns an error to the LLM, which can retry in the next turn
+- Memory data is less critical than documents — worst case, a memory is lost and re-derived in a future conversation
+
+If Qdrant upsert fails, `do_memory_save` throws, the agent loop catches it, and the LLM receives the error as a tool_result. No outbox fallback needed.
+
+### 11. Data Flow
 
 ```
 User: "我叫小明，以后叫我小明就行"
@@ -259,11 +283,12 @@ Later session:
 
 | File | Change |
 |------|--------|
-| `schema.sql` | Add `source`, `expires_at` columns to chunks |
-| `src/dao/d1.ts` | Add `insertChatMemory()`, modify `searchFTS()` to filter expired |
-| `src/dao/qdrant.ts` | Add `expires_at` to search filter |
+| `schema.sql` | Add `user_id`, `source`, `expires_at`, `created_at` to chunks; relax `doc_id` NOT NULL; remove UNIQUE(doc_id,seq) |
+| `src/dao/d1.ts` | Add `insertChatMemory()`, `updateChatMemory()`; modify `searchFTS()` to filter expired + by user_id |
+| `src/dao/qdrant.ts` | Add `source`/`expires_at` filter in `searchVectors()`; update payload schema |
 | `src/agent/tools.ts` | Add `memory_save` tool definition + `do_memory_save` + `getExpiresAt` |
 | `src/agent/prompt.ts` | Add memory management guidance to system prompt |
 | `src/services/search.ts` | Adapt FTS/vector search for source/expiration filtering |
+| `src/services/upload.ts` | Update Qdrant payload to include `source: 'document'` |
 | `tests/unit/agent/tools.test.ts` | Tests for `do_memory_save` and `getExpiresAt` |
-| `tests/unit/dao/d1.test.ts` | Tests for `insertChatMemory` |
+| `tests/unit/dao/d1.test.ts` | Tests for `insertChatMemory`, `updateChatMemory` |

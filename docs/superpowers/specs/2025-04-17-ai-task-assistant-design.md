@@ -50,7 +50,7 @@ Reference: generic-agent `agent_runner_loop` (agent_loop.py:118-242) — iterate
 
 ### Implementation
 
-- `AgentLoop` class, method `run(userId, conversationId, userMessage)` returns `ReadableStream` (SSE)
+- `AgentLoop` class, method `run(userId, threadId, userMessage)` returns `ReadableStream` (SSE)
 - Each LLM response may contain 0-N tool_calls. When N > 0, all N tools execute, results stream back, then next LLM call happens
 - "Round" = one LLM call + its tool executions. Max 30 rounds
 - SSE events stream tool_call/tool_result as they happen (not batched)
@@ -69,6 +69,7 @@ Reference: generic-agent `agent_runner_loop` (agent_loop.py:118-242) — iterate
 | `file_list` | List workspace files | D1 |
 | `file_delete` | Delete file and its chunks | R2 + D1 + Qdrant |
 | `chunks_search` | Unified search (keyword + vector hybrid, RRF fusion) | D1 FTS5 + Qdrant |
+| `memory_save` | Save key info to long-term memory (see memory spec) | D1 + Qdrant |
 
 ### Tool Dispatch
 
@@ -110,8 +111,8 @@ During the agent loop:
 1. User message saved as `role='user'` row before loop starts
 2. Each LLM response saved as `role='assistant'` row. If response contains tool_calls, `tool_calls` column stores the JSON array
 3. Each tool result saved as a separate `role='tool'` row, with `tool_call_id` linking back to the assistant's tool_call
-4. All messages in a single conversation share the same `conversation_id`
-5. Conversations table `updated_at` refreshed on each new message
+4. All messages in a single thread share the same `thread_id`
+5. Threads table `updated_at` refreshed on each new message
 6. **Status events are NOT persisted** — they are UI-only, ephemeral
 
 ### Deep Research
@@ -130,7 +131,7 @@ Not a separate tool. The agent loop supports deep research through multi-round t
 **实现方案**: `AgentLoop` 重构为 AsyncGenerator，`execute()` 返回 `AsyncGenerator<AgentEvent>`。SSE 和子代理都是 `execute()` 的薄包装。详见 `docs/superpowers/specs/2025-04-17-spawn-agent-design.md`。
 
 - Sub-agent is a **tool** (`spawn_agent`) that the main LLM can call
-- Sub-agent runs with **isolated context**: its own system prompt, no access to parent conversation
+- Sub-agent runs with **isolated context**: its own system prompt, no access to parent thread
 - Input: task description + optional context (explicitly passed by main agent)
 - Output: free-text result returned to main agent as tool_result
 - Main agent decides how to use the result
@@ -173,7 +174,7 @@ CREATE TABLE tasks (
   updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
-CREATE TABLE conversations (
+CREATE TABLE threads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
   title TEXT,
@@ -183,7 +184,7 @@ CREATE TABLE conversations (
 
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  thread_id INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('user','assistant','tool')),
   content TEXT NOT NULL,
   tool_calls TEXT,
@@ -230,8 +231,8 @@ CREATE TABLE outbox_events (
 );
 
 CREATE INDEX idx_tasks_user ON tasks(user_id);
-CREATE INDEX idx_conversations_user ON conversations(user_id);
-CREATE INDEX idx_messages_conv_created ON messages(conversation_id, created_at);
+CREATE INDEX idx_threads_user ON threads(user_id);
+CREATE INDEX idx_messages_thread_created ON messages(thread_id, created_at);
 CREATE INDEX idx_documents_user ON documents(user_id);
 CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 ```
@@ -244,7 +245,7 @@ CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 
 **索引设计说明**:
 - `idx_chunks_doc` 省略: `UNIQUE(doc_id, seq)` 约束自动创建索引
-- `idx_messages_conv_created` 复合索引: 同时覆盖 WHERE conversation_id=? 和 ORDER BY created_at
+- `idx_messages_thread_created` 复合索引: 同时覆盖 WHERE thread_id=? 和 ORDER BY created_at
 
 ---
 
@@ -279,9 +280,10 @@ Outbox is a safety net, not the driver. Primary path attempts synchronous dual-w
 |------|---------|-------|
 | Users | D1 | email (unique) |
 | Tasks | D1 | user_id |
-| Conversations + Messages | D1 | conversation_id |
+| Threads + Messages | D1 | thread_id |
 | Document metadata | D1 | user_id |
-| Chunk metadata + content | D1 | doc_id |
+| Chunk metadata + content | D1 | doc_id or user_id (for chat memories) |
+| Chat memories | D1 (chunks, source='chat') + Qdrant | user_id, expires_at |
 | Full-text index | D1 FTS5 | content (porter + unicode61) |
 | Vectors | Qdrant | cosine similarity (dim=1024) |
 | Raw files | R2 | user/{userId}/{timestamp}_{filename} |
@@ -290,13 +292,20 @@ Outbox is a safety net, not the driver. Primary path attempts synchronous dual-w
 ### Qdrant Collection Schema
 
 ```
-Collection: "chunks"
+Collection: configurable via QDRANT_COLLECTION env var (default: xvc_agent_chunks)
 Vectors: dim=1024, distance=cosine
-Payload per point:
+Payload per point (document chunks):
   - chunk_id: integer (matches D1 chunks.id)
   - doc_id: integer (matches D1 documents.id)
   - user_id: integer
   - seq: integer (chunk sequence number)
+Payload per point (chat memories, added by memory_save tool):
+  - chunk_id: integer (matches D1 chunks.id)
+  - user_id: integer
+  - source: string ('chat')
+  - content: string (full memory text)
+  - category: string ('preference' | 'fact' | 'plan')
+  - expires_at: string | null (ISO datetime, null = never expire)
 ```
 
 Initialization: create collection on first run if not exists (check via Qdrant API).
@@ -489,14 +498,14 @@ POST   /api/user/create              # Body: { email, name } → { id, email, na
 GET    /api/user/:id                  # → { id, email, name, ai_nickname }
 POST   /api/user/update              # Body: { id, name?, ai_nickname? } → updated user
 
-# Conversations
-GET    /api/conversations/list        # Query: ?userId= → [{ id, title, created_at }]
-POST   /api/conversations/create      # Body: { userId, title? } → { id, title }
-GET    /api/conversations/:id/messages  # Query: ?limit=&before= → [{ id, role, content, ... }]
-POST   /api/conversations/delete      # Body: { id } → { ok: true }
+# Threads
+GET    /api/threads/list              # Query: ?userId= → [{ id, title, created_at }]
+POST   /api/threads/create            # Body: { userId, title? } → { id, title }
+GET    /api/threads/:id/messages      # Query: ?limit=&before= → [{ id, role, content, ... }]
+POST   /api/threads/delete            # Body: { id } → { ok: true }
 
 # Chat (core)
-POST   /api/chat/:convId              # Body: { content: string } Headers: X-User-Id
+POST   /api/chat                      # Body: { threadId, content } Headers: X-User-Id
                                     # → SSE stream of ChatEvent
 
 # Tasks
@@ -549,7 +558,7 @@ No router, no build step. Static files served by Worker from `public/`.
 │ Header: AI Assistant    [Workspace] [⚙] │
 ├──────────────────┬──────────────────────┤
 │                  │                      │
-│ Conversation     │   Chat / Workspace   │
+│ Thread List      │   Chat / Workspace   │
 │ List (sidebar)   │   (main area)        │
 │                  │                      │
 │  - Conv 1        │   Messages:          │
@@ -579,20 +588,20 @@ No router, no build step. Static files served by Worker from `public/`.
 - Upload progress bar
 - File type icons (PDF, DOC, TXT, MD)
 
-### Conversation Management
+### Thread Management
 
-- Sidebar lists conversations (title auto-generated from first message)
-- Click to switch conversation
-- "New Chat" button creates new conversation
-- Delete conversation (X button, confirmation dialog)
+- Sidebar lists threads (title auto-generated from first message)
+- Click to switch thread
+- "New Chat" button creates new thread
+- Delete thread (X button, confirmation dialog)
 
 ### SSE Handling (POST-based)
 
 ```javascript
-const response = await fetch(`/api/chat/${convId}`, {
+const response = await fetch(`/api/chat`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-  body: JSON.stringify({ content: message })
+  body: JSON.stringify({ threadId, content: message })
 });
 const reader = response.body.getReader();
 const decoder = new TextDecoder();
@@ -632,7 +641,7 @@ xvc.agent2/
 │   │   ├── client.ts            # LLMClient class
 │   │   └── embedding.ts         # EmbeddingClient class
 │   ├── dao/
-│   │   ├── d1.ts                # D1 operations (users, tasks, conversations, messages, documents, chunks)
+│   │   ├── d1.ts                # D1 operations (users, tasks, threads, messages, documents, chunks)
 │   │   ├── qdrant.ts            # Qdrant operations (upsert, search vectors)
 │   │   └── outbox.ts            # Outbox event management
 │   ├── services/
