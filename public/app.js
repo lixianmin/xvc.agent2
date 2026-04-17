@@ -304,9 +304,13 @@ function appendUserMessage(content) {
     const container = $('#messages');
     const div = document.createElement('div');
     div.className = 'message user';
-    const initial = (state.userName || 'U')[0].toUpperCase();
+    const userName = state.userName || 'User';
+    const initial = userName[0].toUpperCase();
     div.innerHTML = `
-        <div class="message-avatar">${escapeHtml(initial)}</div>
+        <div class="message-avatar-wrap">
+            <div class="message-avatar" data-role="user-avatar">${escapeHtml(initial)}</div>
+            <div class="message-name" data-role="user-name">${escapeHtml(userName)}</div>
+        </div>
         <div class="message-body"><div class="message-bubble">${escapeHtml(content)}</div></div>
     `;
     container.appendChild(div);
@@ -318,9 +322,13 @@ function appendAssistantMessage(content) {
     const container = $('#messages');
     const div = document.createElement('div');
     div.className = 'message assistant';
-    const avatar = (state.aiNickname || 'AI')[0].toUpperCase();
+    const aiName = state.aiNickname || 'AI';
+    const avatar = aiName[0].toUpperCase();
     div.innerHTML = `
-        <div class="message-avatar">${escapeHtml(avatar)}</div>
+        <div class="message-avatar-wrap">
+            <div class="message-avatar" data-role="ai-avatar">${escapeHtml(avatar)}</div>
+            <div class="message-name" data-role="ai-name">${escapeHtml(aiName)}</div>
+        </div>
         <div class="message-body"><div class="message-bubble"></div></div>
     `;
     container.appendChild(div);
@@ -339,6 +347,24 @@ function appendStatusMessage(content) {
     container.appendChild(div);
     scrollToBottom();
     return div;
+}
+
+function updateDisplayedNames() {
+    const userName = state.userName || 'User';
+    const aiName = state.aiNickname || 'AI';
+
+    document.querySelectorAll('[data-role="user-avatar"]').forEach(el => {
+        el.textContent = userName[0].toUpperCase();
+    });
+    document.querySelectorAll('[data-role="user-name"]').forEach(el => {
+        el.textContent = userName;
+    });
+    document.querySelectorAll('[data-role="ai-avatar"]').forEach(el => {
+        el.textContent = aiName[0].toUpperCase();
+    });
+    document.querySelectorAll('[data-role="ai-name"]').forEach(el => {
+        el.textContent = aiName;
+    });
 }
 
 function addToolCallBadge(parentEl, name, args, callId) {
@@ -643,8 +669,9 @@ async function saveSettings(e) {
         state.userName = res.name;
         state.aiNickname = res.ai_nickname;
         localStorage.setItem(LS_USER_NAME, res.name);
+        updateDisplayedNames();
         closeSettings();
-        appendStatusMessage('设置已保存，下条消息生效');
+        appendStatusMessage('设置已保存');
         setTimeout(() => {
             const s = document.querySelector('.message.status:last-of-type');
             if (s) s.remove();
