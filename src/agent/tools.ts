@@ -155,7 +155,33 @@ export function getToolDefinitions(): ToolDef[] {
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'spawn_agent',
+        description: 'Spawn 1-3 sub-agents to execute tasks in parallel. Each sub-agent has isolated context and can use search/file tools. Returns results for each task.',
+        parameters: {
+          type: 'object',
+          properties: {
+            tasks: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Task descriptions for sub-agents (1-3 tasks)',
+            },
+            context: {
+              type: 'string',
+              description: 'Optional shared context to pass to all sub-agents (e.g., background info, constraints)',
+            },
+          },
+          required: ['tasks'],
+        },
+      },
+    },
   ];
+}
+
+export function getSubAgentToolDefinitions(): ToolDef[] {
+  return getToolDefinitions().filter((t) => t.function.name !== 'spawn_agent');
 }
 
 async function do_task_create(args: any, deps: ToolDeps): Promise<string> {
