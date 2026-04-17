@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { reciprocalRankFusion, chunksSearch } from '../../../src/services/search';
+import { reciprocalRankFusion, chunksSearch, mmrRerank } from '../../../src/services/search';
 
 describe('reciprocalRankFusion', () => {
   it('fuses two ranked lists with correct scores', () => {
@@ -119,5 +119,49 @@ describe('chunksSearch', () => {
     expect(result[0].id).toBe(1);
     expect(consoleWarn).toHaveBeenCalled();
     consoleWarn.mockRestore();
+  });
+});
+
+describe('mmrRerank', () => {
+  function makeVec(angle: number, dim = 8): number[] {
+    return Array.from({ length: dim }, (_, i) => (i === 0 ? Math.cos(angle) : Math.sin(angle)));
+  }
+
+  it('selects diverse candidates over similar ones', () => {
+    const queryVec = makeVec(0);
+    const candidates = [
+      { id: 1, content: 'a', score: 1, doc_id: 0, vector: makeVec(0.1) },
+      { id: 2, content: 'b', score: 1, doc_id: 0, vector: makeVec(0.15) },
+      { id: 3, content: 'c', score: 1, doc_id: 0, vector: makeVec(1.5) },
+    ];
+
+    const result = mmrRerank(candidates, queryVec, 0.5, 3);
+
+    expect(result).toHaveLength(3);
+    const ids = result.map((r) => r.id);
+    expect(ids[0]).toBe(1);
+    expect(ids).toContain(3);
+  });
+
+  it('returns all candidates when fewer than topK', () => {
+    const queryVec = [1, 0, 0];
+    const candidates = [
+      { id: 1, content: 'a', score: 1, doc_id: 0, vector: [1, 0, 0] },
+      { id: 2, content: 'b', score: 1, doc_id: 0, vector: [0, 1, 0] },
+    ];
+
+    const result = mmrRerank(candidates, queryVec, 0.7, 5);
+    expect(result).toHaveLength(2);
+  });
+
+  it('handles candidates without vectors', () => {
+    const queryVec = [1, 0, 0];
+    const candidates = [
+      { id: 1, content: 'a', score: 1, doc_id: 0 },
+      { id: 2, content: 'b', score: 1, doc_id: 0, vector: [0, 1, 0] },
+    ];
+
+    const result = mmrRerank(candidates, queryVec, 0.7, 2);
+    expect(result).toHaveLength(2);
   });
 });

@@ -1,30 +1,34 @@
-type Script = 'hangul' | 'han' | 'kana' | 'other';
+type CJKLang = 'zh' | 'ja' | 'ko';
 
-function getScript(cp: number): Script {
-  if (
-    (cp >= 0xac00 && cp <= 0xd7af) ||
-    (cp >= 0x1100 && cp <= 0x11ff) ||
-    (cp >= 0x3130 && cp <= 0x318f)
-  )
-    return 'hangul';
-
-  if (
-    (cp >= 0x3040 && cp <= 0x309f) ||
-    (cp >= 0x30a0 && cp <= 0x30ff) ||
-    (cp >= 0x31f0 && cp <= 0x31ff) ||
-    (cp >= 0xff65 && cp <= 0xff9f)
-  )
-    return 'kana';
-
+function getCJKLang(cp: number): CJKLang | null {
   if (
     (cp >= 0x4e00 && cp <= 0x9fff) ||
     (cp >= 0x3400 && cp <= 0x4dbf) ||
     (cp >= 0x20000 && cp <= 0x2a6df) ||
     (cp >= 0xf900 && cp <= 0xfaff)
   )
-    return 'han';
+    return 'zh';
 
-  return 'other';
+  if (
+    (cp >= 0x3040 && cp <= 0x309f) ||
+    (cp >= 0x30a0 && cp <= 0x30ff) ||
+    (cp >= 0x31f0 && cp <= 0x31ff) ||
+    (cp >= 0xff65 && cp <= 0xff9f) ||
+    (cp >= 0x4e00 && cp <= 0x9fff) ||
+    (cp >= 0x3400 && cp <= 0x4dbf) ||
+    (cp >= 0x20000 && cp <= 0x2a6df) ||
+    (cp >= 0xf900 && cp <= 0xfaff)
+  )
+    return 'ja';
+
+  if (
+    (cp >= 0xac00 && cp <= 0xd7af) ||
+    (cp >= 0x1100 && cp <= 0x11ff) ||
+    (cp >= 0x3130 && cp <= 0x318f)
+  )
+    return 'ko';
+
+  return null;
 }
 
 const CJK_RE = /[\u3040-\u9fff\uac00-\ud7af]/;
@@ -33,72 +37,52 @@ export function containsCJK(text: string): boolean {
   return CJK_RE.test(text);
 }
 
-interface ScriptChunk {
+type ScriptChunk = {
   text: string;
-  script: Script;
-}
+  lang: CJKLang;
+};
 
 function splitByScript(text: string): ScriptChunk[] {
   const chunks: ScriptChunk[] = [];
   let current = '';
-  let currentScript: Script = 'other';
+  let currentLang: CJKLang = 'zh';
 
   for (const ch of text) {
     const cp = ch.codePointAt(0)!;
-    const script = getScript(cp);
+    const lang = getCJKLang(cp);
 
     if (/\s/.test(ch)) {
       if (current) {
-        chunks.push({ text: current, script: currentScript });
+        chunks.push({ text: current, lang: currentLang });
         current = '';
-        currentScript = 'other';
       }
       continue;
     }
 
-    if (current && script !== currentScript) {
-      const shouldMerge =
-        (currentScript === 'han' || currentScript === 'kana') &&
-        (script === 'han' || script === 'kana');
-      if (!shouldMerge) {
-        chunks.push({ text: current, script: currentScript });
+    if (current && lang) {
+      if (lang !== currentLang) {
+        chunks.push({ text: current, lang: currentLang });
         current = '';
       }
     }
 
-    if (!current) currentScript = script;
-    if (currentScript === 'other') currentScript = script;
-    if (currentScript === 'han' && (script === 'kana' || script === 'han')) currentScript = 'kana';
-    if (currentScript === 'kana' && (script === 'han' || script === 'kana')) currentScript = 'kana';
+    if (!current && lang) currentLang = lang;
 
     current += ch;
-    if (currentScript === 'other') currentScript = script;
   }
 
   if (current) {
-    chunks.push({ text: current, script: currentScript });
+    chunks.push({ text: current, lang: currentLang });
   }
 
   return chunks;
 }
 
-let _zhSegmenter: Intl.Segmenter | null = null;
-let _jaSegmenter: Intl.Segmenter | null = null;
-let _koSegmenter: Intl.Segmenter | null = null;
+const segmenters: Partial<Record<CJKLang, Intl.Segmenter>> = {};
 
-function getZhSegmenter(): Intl.Segmenter {
-  if (!_zhSegmenter) _zhSegmenter = new Intl.Segmenter('zh', { granularity: 'word' });
-  return _zhSegmenter;
-}
-
-function getJaSegmenter(): Intl.Segmenter {
-  if (!_jaSegmenter) _jaSegmenter = new Intl.Segmenter('ja', { granularity: 'word' });
-  return _jaSegmenter;
-}
-
-function getKoSegmenter(): Intl.Segmenter {
-  if (!_koSegmenter) _koSegmenter = new Intl.Segmenter('ko', { granularity: 'word' });
-  return _koSegmenter;
+function getSegmenter(lang: CJKLang): Intl.Segmenter {
+  if (!segmenters[lang]) segmenters[lang] = new Intl.Segmenter(lang, { granularity: 'word' });
+  return segmenters[lang]!;
 }
 
 function segmentByIntl(text: string, segmenter: Intl.Segmenter): string {
@@ -115,20 +99,7 @@ export function tokenizeCJK(text: string): string {
   const tokens: string[] = [];
 
   for (const chunk of chunks) {
-    switch (chunk.script) {
-      case 'hangul':
-        tokens.push(segmentByIntl(chunk.text, getKoSegmenter()));
-        break;
-      case 'kana':
-        tokens.push(segmentByIntl(chunk.text, getJaSegmenter()));
-        break;
-      case 'han':
-        tokens.push(segmentByIntl(chunk.text, getZhSegmenter()));
-        break;
-      default:
-        tokens.push(chunk.text);
-        break;
-    }
+    tokens.push(segmentByIntl(chunk.text, getSegmenter(chunk.lang)));
   }
 
   return tokens.filter(Boolean).join(' ');

@@ -8,6 +8,7 @@ type SearchResult = {
   id: string;
   score: number;
   payload: Record<string, unknown>;
+  vector?: number[];
 };
 
 export class QdrantDAO {
@@ -48,16 +49,18 @@ export class QdrantDAO {
     });
   }
 
-  async searchVectors(query: number[], userId: number, limit: number): Promise<SearchResult[]> {
+  async searchVectors(query: number[], userId: number, limit: number, withVector = false): Promise<SearchResult[]> {
+    const body: Record<string, unknown> = {
+      vector: query,
+      filter: { must: [{ key: 'user_id', match: { value: userId } }] },
+      limit,
+      with_payload: true,
+    };
+    if (withVector) body.with_vector = true;
     const res = await fetch(this.collectionUrl('/points/search'), {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify({
-        vector: query,
-        filter: { must: [{ key: 'user_id', match: { value: userId } }] },
-        limit,
-        with_payload: true,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     return data.result;

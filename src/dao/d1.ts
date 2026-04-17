@@ -319,7 +319,7 @@ type CreateDocumentInput = {
   hash: string;
 };
 
-export async function createDocument(db: D1Database, input: CreateDocumentInput): Promise<Document> {
+export async function createDocument(db: D1Database, input: CreateDocumentInput): Promise<Document|null> {
   const result = await db
     .prepare('INSERT INTO documents (user_id, filename, mime_type, size, r2_key, hash) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(input.userId, input.filename, input.mimeType, input.size, input.r2Key, input.hash)
@@ -357,14 +357,13 @@ type InsertChunkInput = {
   tokenCount: number;
 };
 
-export async function insertChunk(db: D1Database, input: InsertChunkInput): Promise<Chunk> {
-  const result = await db
-    .prepare('INSERT INTO chunks (doc_id, seq, content, token_count) VALUES (?, ?, ?, ?)')
-    .bind(input.docId, input.seq, input.content, input.tokenCount)
-    .run();
-  const id = result.meta.last_row_id as number;
+export async function insertChunk(db: D1Database, input: InsertChunkInput): Promise<Chunk|null> {
   const tokenized = tokenizeCJK(input.content);
-  await db.prepare('INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)').bind(id, tokenized).run();
+  const result = await db.batch([
+    db.prepare('INSERT INTO chunks (doc_id, seq, content, token_count) VALUES (?, ?, ?, ?)').bind(input.docId, input.seq, input.content, input.tokenCount),
+    db.prepare('INSERT INTO chunks_fts (rowid, content) VALUES (last_insert_rowid(), ?)').bind(tokenized),
+  ]);
+  const id = result[0].meta.last_row_id as number;
   return db.prepare('SELECT * FROM chunks WHERE id = ?').bind(id).first<Chunk>()!;
 }
 
