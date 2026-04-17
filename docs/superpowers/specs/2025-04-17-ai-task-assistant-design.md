@@ -2,7 +2,7 @@
 
 ## Overview
 
-A conversational AI task management assistant deployed on Cloudflare Worker. Users interact through a web chat interface to manage tasks, upload files, search the web, and query documents via RAG. All via natural language — no traditional forms.
+A conversational AI task management assistant deployed on Cloudflare Worker. Users interact through a web chat interface to manage tasks, upload files, search the web, and query documents via RAG. Task management and search are via natural language; user registration uses a simple form.
 
 **Tech Stack**: TypeScript, Hono, Cloudflare Worker/D1/R2, Qdrant, GLM API, Serper.dev
 
@@ -23,7 +23,7 @@ A conversational AI task management assistant deployed on Cloudflare Worker. Use
 ```
 Frontend load → Check localStorage for userId
   → Exists: GET /api/user verify → show chat
-  → Missing: show registration form (name + email) → POST /api/user → store userId
+  → Missing: show registration form (name + email) → POST /api/user/create → store userId
 ```
 
 - Identity: `X-User-Id` header on every request
@@ -66,7 +66,6 @@ Reference: generic-agent `agent_runner_loop` (agent_loop.py:118-242) — iterate
 | `task_delete` | Delete task | D1 |
 | `web_search` | Serper web search | Serper API |
 | `web_fetch` | Fetch and extract URL content | HTTP |
-| `file_upload` | Upload file to workspace (triggers parse→chunk→embed) | R2 + D1 + Qdrant |
 | `file_list` | List workspace files | D1 |
 | `file_delete` | Delete file and its chunks | R2 + D1 + Qdrant |
 | `chunks_search` | Unified search (keyword + vector hybrid, RRF fusion) | D1 FTS5 + Qdrant |
@@ -85,6 +84,7 @@ SSE stream emits three categories of events:
 - `{ type: "tool_result", name: "...", call_id: "...", result: "..." }` — tool output
 
 **2. Status events** — UI-only progress indicators, NOT persisted, NOT sent to LLM:
+- `{ type: "status", content: "正在检索相关文档..." }` — RAG pre-retrieval started
 - `{ type: "status", content: "正在思考..." }` — LLM call started
 - `{ type: "status", content: "正在搜索网页..." }` — tool dispatch started
 - `{ type: "status", content: "正在处理文件..." }` — file processing
@@ -283,7 +283,7 @@ Outbox is a safety net, not the driver. Primary path attempts synchronous dual-w
 | Tasks | D1 | user_id |
 | Conversations + Messages | D1 | conversation_id |
 | Document metadata | D1 | user_id |
-| Chunk metadata + content | D1 | doc_id, hash |
+| Chunk metadata + content | D1 | doc_id |
 | Full-text index | D1 FTS5 | content (porter + unicode61) |
 | Vectors | Qdrant | cosine similarity (dim=1024) |
 | Raw files | R2 | user/{userId}/{timestamp}_{filename} |
@@ -308,6 +308,8 @@ Initialization: create collection on first run if not exists (check via Qdrant A
 ## 6. File Processing Pipeline
 
 ```
+POST /api/files/upload (HTTP API, not agent tool)
+    ↓
 File upload → R2 (raw file)
     ↓
 Parse (PDF/Word/TXT/MD → plain text)
@@ -386,7 +388,7 @@ function tokenizeCJK(text: string): string {
 3. When approaching 500-token target, search a 100-token window for best break point
 4. Score adjustment: `finalScore = baseScore * (1 - (distance/window)^2 * 0.7)` — squared distance decay prefers nearby headings over distant ones
 5. Code fence protection: no breaks inside code blocks
-6. Each chunk stores: content, position (byte offset), token_count, hash (SHA-256 of content)
+6. Each chunk stores: content, seq, token_count
 
 ---
 
@@ -408,11 +410,11 @@ Single tool searches all chunks — no distinction between "file search" and "me
 1. Tokenize query with tokenizeCJK()
 2. Run FTS5 search with tokenized query → ranked list A
 3. Run Qdrant search with original query embedding → ranked list B
-3. (Optional) LLM query expansion generates sub-queries → additional lists C, D...
-4. RRF: score(chunk) = Σ weight / (k + rank + 1)  [k=60]
-5. Lists A and B (from original query) get 2x weight vs expansion lists
-6. Top-rank bonus: rank #1 gets +0.05, ranks #2-3 get +0.02
-7. Return top-N results sorted by RRF score
+4. (Optional future) LLM query expansion generates sub-queries → additional lists C, D...
+5. RRF: score(chunk) = Σ weight / (k + rank + 1)  [k=60]
+6. Lists A and B (from original query) get 2x weight vs expansion lists
+7. Top-rank bonus: rank #1 gets +0.05, ranks #2-3 get +0.02
+8. Return top-N results sorted by RRF score
 ```
 
 For MVP: skip LLM query expansion (steps 3, 5). Only fuse FTS5 + Qdrant results with equal weights.
@@ -443,8 +445,10 @@ Prompt assembled in order (tools first for prefix caching stability):
 1. **Available tools** (JSON schema) — fixed content, stable for prefix caching
 2. **Base instructions** (role, capabilities, guidelines) — fixed content
 3. **User info** (name, AI nickname) — changes rarely
-4. **Current datetime** (精确到秒，如 `2025-04-17 14:30:00 CST`) — changes every request
-5. **RAG context** (only if chunks_search was triggered via tool call in a previous round of the same request) — variable
+4. **RAG context** (auto-retrieved: embed user message → chunks_search hybrid → top relevant chunks injected into prompt) — variable per request
+5. **Current datetime** (精确到秒，如 `2025-04-17 14:30:00 CST`) — changes every request
+
+**RAG auto-pre-retrieval**: Before each agent loop starts, the user's message is automatically used to query chunks_search (hybrid mode, top 5). Results are formatted as context and injected into position 4. This happens before any LLM call, so the LLM always has relevant document context from the start. The LLM can also explicitly call `chunks_search` tool for follow-up queries within the loop.
 
 ### Context Management
 
@@ -668,8 +672,8 @@ xvc.agent2/
 
 - Each module tested in isolation
 - D1: use miniflare's D1 simulator
-- Qdrant: mock HTTP calls
-- LLM: mock API responses
+- Qdrant: mock HTTP calls with vitest `vi.fn()` or custom fetch mock
+- LLM: mock API responses with vitest `vi.fn()` on LLMClient.chat
 - Coverage target: core modules >= 80%
 
 ### Integration Tests (tests/integration/)
