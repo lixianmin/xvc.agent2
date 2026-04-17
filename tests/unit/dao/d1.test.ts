@@ -14,6 +14,11 @@ import {
   deleteConversation,
   saveMessage,
   loadMessages,
+  createDocument,
+  listDocuments,
+  deleteDocument,
+  insertChunk,
+  searchFTS,
 } from '../../../src/dao/d1';
 
 describe('User DAO', () => {
@@ -285,5 +290,97 @@ describe('Message DAO', () => {
   it('loadMessages returns empty array for non-existent conversation', async () => {
     const msgs = await loadMessages(db, 99999);
     expect(msgs).toEqual([]);
+  });
+});
+
+describe('Document & Chunk DAO', () => {
+  let db: D1Database;
+  let userId: number;
+  let docId: number;
+
+  beforeAll(async () => {
+    db = env.DB;
+    await db.exec(
+      "CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), filename TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, r2_key TEXT NOT NULL, hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
+    );
+    await db.exec(
+      'CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, seq INTEGER NOT NULL, content TEXT NOT NULL, token_count INTEGER NOT NULL, UNIQUE(doc_id, seq));',
+    );
+    await db.exec(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, tokenize='porter unicode61', content='chunks', content_rowid='id');",
+    );
+    const user = await createUser(db, { email: 'docuser@example.com', name: 'DocUser' });
+    userId = user.id;
+  });
+
+  it('creates a document', async () => {
+    const doc = await createDocument(db, {
+      userId,
+      filename: 'test.pdf',
+      mimeType: 'application/pdf',
+      size: 1024,
+      r2Key: 'uploads/test.pdf',
+      hash: 'abc123',
+    });
+    expect(doc.id).toBeDefined();
+    expect(doc.filename).toBe('test.pdf');
+    expect(doc.mime_type).toBe('application/pdf');
+    expect(doc.size).toBe(1024);
+    expect(doc.r2_key).toBe('uploads/test.pdf');
+    expect(doc.hash).toBe('abc123');
+    docId = doc.id;
+  });
+
+  it('lists documents for a user', async () => {
+    const docs = await listDocuments(db, userId);
+    expect(docs.length).toBeGreaterThanOrEqual(1);
+    expect(docs.find((d) => d.id === docId)).toBeDefined();
+  });
+
+  it('inserts a chunk and syncs FTS', async () => {
+    const chunk = await insertChunk(db, {
+      docId,
+      seq: 1,
+      content: '人工智能是计算机科学的一个分支',
+      tokenCount: 10,
+    });
+    expect(chunk.id).toBeDefined();
+    expect(chunk.doc_id).toBe(docId);
+    expect(chunk.seq).toBe(1);
+    expect(chunk.content).toBe('人工智能是计算机科学的一个分支');
+    expect(chunk.token_count).toBe(10);
+  });
+
+  it('searchFTS finds CJK content', async () => {
+    const results = await searchFTS(db, '人工智能', 10);
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0].content).toContain('人工智能');
+    expect(typeof results[0].score).toBe('number');
+  });
+
+  it('searchFTS returns empty for no match', async () => {
+    const results = await searchFTS(db, 'xyznonexistent123', 10);
+    expect(results).toEqual([]);
+  });
+
+  it('deletes a document and cascades chunks', async () => {
+    const doc = await createDocument(db, {
+      userId,
+      filename: 'del.pdf',
+      mimeType: 'application/pdf',
+      size: 512,
+      r2Key: 'uploads/del.pdf',
+      hash: 'del456',
+    });
+    await insertChunk(db, { docId: doc.id, seq: 1, content: 'to be deleted', tokenCount: 3 });
+    const result = await deleteDocument(db, doc.id);
+    expect(result).toBe(true);
+    const docs = await listDocuments(db, userId);
+    expect(docs.find((d) => d.id === doc.id)).toBeUndefined();
+  });
+
+  it('deleteDocument returns false for non-existent', async () => {
+    const result = await deleteDocument(db, 99999);
+    expect(result).toBe(false);
   });
 });

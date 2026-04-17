@@ -1,3 +1,5 @@
+import { tokenizeCJK } from '../services/cjk';
+
 type CreateUserInput = {
   email: string;
   name: string;
@@ -295,4 +297,93 @@ function buildMessageGroups(messages: Message[]): MessageGroup[] {
   }
 
   return groups;
+}
+
+type Document = {
+  id: number;
+  user_id: number;
+  filename: string;
+  mime_type: string;
+  size: number;
+  r2_key: string;
+  hash: string;
+  created_at: string;
+};
+
+type CreateDocumentInput = {
+  userId: number;
+  filename: string;
+  mimeType: string;
+  size: number;
+  r2Key: string;
+  hash: string;
+};
+
+export async function createDocument(db: D1Database, input: CreateDocumentInput): Promise<Document> {
+  const result = await db
+    .prepare('INSERT INTO documents (user_id, filename, mime_type, size, r2_key, hash) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(input.userId, input.filename, input.mimeType, input.size, input.r2Key, input.hash)
+    .run();
+  const id = result.meta.last_row_id as number;
+  return db.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<Document>()!;
+}
+
+export async function listDocuments(db: D1Database, userId: number): Promise<Document[]> {
+  const result = await db
+    .prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY id DESC')
+    .bind(userId)
+    .all<Document>();
+  return result.results;
+}
+
+export async function deleteDocument(db: D1Database, id: number): Promise<boolean> {
+  await db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE doc_id = ?)').bind(id).run();
+  const result = await db.prepare('DELETE FROM documents WHERE id = ?').bind(id).run();
+  return result.meta.changes > 0;
+}
+
+type Chunk = {
+  id: number;
+  doc_id: number;
+  seq: number;
+  content: string;
+  token_count: number;
+};
+
+type InsertChunkInput = {
+  docId: number;
+  seq: number;
+  content: string;
+  tokenCount: number;
+};
+
+export async function insertChunk(db: D1Database, input: InsertChunkInput): Promise<Chunk> {
+  const result = await db
+    .prepare('INSERT INTO chunks (doc_id, seq, content, token_count) VALUES (?, ?, ?, ?)')
+    .bind(input.docId, input.seq, input.content, input.tokenCount)
+    .run();
+  const id = result.meta.last_row_id as number;
+  const tokenized = tokenizeCJK(input.content);
+  await db.prepare('INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)').bind(id, tokenized).run();
+  return db.prepare('SELECT * FROM chunks WHERE id = ?').bind(id).first<Chunk>()!;
+}
+
+type FTSResult = {
+  id: number;
+  content: string;
+  score: number;
+};
+
+export async function searchFTS(db: D1Database, query: string, limit = 20): Promise<FTSResult[]> {
+  const tokenized = tokenizeCJK(query);
+  const terms = tokenized.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+  const ftsQuery = terms.map((t) => `${t}*`).join(' AND ');
+  const result = await db
+    .prepare(
+      'SELECT c.id, c.content, bm25(chunks_fts) AS score FROM chunks_fts f JOIN chunks c ON f.rowid = c.id WHERE chunks_fts MATCH ? ORDER BY score LIMIT ?',
+    )
+    .bind(ftsQuery, limit)
+    .all<FTSResult>();
+  return result.results;
 }
