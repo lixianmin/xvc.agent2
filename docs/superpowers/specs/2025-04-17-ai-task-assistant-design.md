@@ -18,7 +18,7 @@ A conversational AI task management assistant deployed on Cloudflare Worker. Use
 
 ## 1. User Management (Code-Driven, Not AI)
 
-Traditional form-based registration, not AI-driven:
+**Design deviation from original requirement**: Original §2.1 says "当用户未提供邮箱和姓名时，AI 主动询问并存储". We use traditional form-based registration instead. Rationale: simpler UX, avoids AI hallucination during identity collection, more reliable user identification. See memory.md for record.
 
 ```
 Frontend load → Check localStorage for userId
@@ -29,7 +29,7 @@ Frontend load → Check localStorage for userId
 - Identity: `X-User-Id` header on every request
 - Middleware validates user exists
 - No password, no session — trust userId (sufficient for demo)
-- User can set/modify AI nickname via settings
+- User can set/modify AI nickname via settings or natural language ("叫我小明")
 
 ---
 
@@ -70,15 +70,26 @@ User message → [LLM call] → parse response
 
 Convention-based: tool name `web_search` → handler function `do_web_search`. No interface, no registry — just a mapping object.
 
-### Deep Research
+### Deep Research & Sub-Agent Planning
 
-Not a separate tool. The agent loop naturally supports multi-round tool calls:
-1. LLM decomposes research question into sub-queries
-2. Calls `web_search` + `web_fetch` multiple times
-3. Synthesizes structured report
-4. 15-round limit provides enough space for research tasks
+Not a separate tool. The agent loop supports sub-agent planning through multi-round tool calls orchestrated by a research-specific system prompt extension:
 
-System prompt instructs the LLM on this capability.
+1. LLM receives complex research question
+2. Research prompt instructs: decompose into sub-questions, search each, synthesize
+3. LLM outputs a research plan as text (e.g., "Sub-question 1: ..., Sub-question 2: ...")
+4. For each sub-question: calls `web_search` → `web_fetch` → extracts findings
+5. After all sub-questions researched: synthesizes structured report with citations
+6. 15-round limit provides space for 3-5 sub-questions with search+fetch each
+
+This satisfies the "子代理规划（将任务拆解为多个子任务）" requirement through prompt-guided task decomposition within the agent loop, without a separate sub-agent infrastructure.
+
+### Error Handling
+
+- **Malformed tool_calls**: Agent loop catches parse errors, injects error as tool_result back to LLM for self-correction
+- **Tool execution failure**: Wrapped in try/catch, error message returned as tool_result so LLM can retry or explain to user
+- **Round limit reached (15)**: Agent loop terminates with a message: "I've reached my processing limit. Let me summarize what I've found so far..."
+- **LLM API failure**: Returns error to frontend, displayed to user with retry option
+- **Qdrant unreachable during chunks_search**: Falls back to keyword-only (FTS5) mode, logs warning
 
 ---
 
@@ -221,7 +232,7 @@ File upload → R2 (raw file)
     ↓
 Parse (PDF/Word/TXT/MD → plain text)
     ↓
-Chunk (heading-aware, ~500 tokens, 15% overlap, reference qmd scoring)
+Chunk (heading-aware chunking algorithm below)
     ↓
 [D1 transaction] Write chunks + chunks_fts + outbox(pending)
     ↓
@@ -233,6 +244,29 @@ Chunk (heading-aware, ~500 tokens, 15% overlap, reference qmd scoring)
     ↓
 [Fallback] Cron retries if any step failed
 ```
+
+### Chunking Algorithm (reference: qmd src/store.ts:72-308)
+
+**Parameters**: target ~500 tokens per chunk, 15% overlap (~75 tokens), search window ~100 tokens
+
+**Break point scoring**:
+| Pattern | Score | Type |
+|---------|-------|------|
+| `# Heading` | 100 | h1 |
+| `## Heading` | 90 | h2 |
+| `### Heading` | 80 | h3 |
+| `` ``` `` (code fence) | 70 | codeblock |
+| `---` / `***` | 60 | horizontal rule |
+| Blank line | 20 | paragraph |
+| Line break | 1 | newline |
+
+**Algorithm**:
+1. Split text into lines, identify all break points with scores
+2. Walk through text accumulating tokens
+3. When approaching 500-token target, search a 100-token window for best break point
+4. Score adjustment: `finalScore = baseScore * (1 - (distance/window)^2 * 0.7)` — squared distance decay prefers nearby headings over distant ones
+5. Code fence protection: no breaks inside code blocks
+6. Each chunk stores: content, position (byte offset), token_count, hash (SHA-256 of content)
 
 ---
 
@@ -251,13 +285,16 @@ Single tool searches all chunks — no distinction between "file search" and "me
 ### RRF Fusion (reference: qmd)
 
 ```
-1. Run FTS5 search → ranked list A
-2. Run Qdrant search → ranked list B
-3. RRF: score(doc) = Σ weight / (k + rank + 1)  [k=60]
-4. First 2 lists get 2x weight (original query results)
-5. Top-rank bonus: rank #1 gets +0.05, ranks #2-3 get +0.02
-6. Return top-N results sorted by RRF score
+1. Run FTS5 search with original query → ranked list A
+2. Run Qdrant search with original query embedding → ranked list B
+3. (Optional) LLM query expansion generates sub-queries → additional lists C, D...
+4. RRF: score(chunk) = Σ weight / (k + rank + 1)  [k=60]
+5. Lists A and B (from original query) get 2x weight vs expansion lists
+6. Top-rank bonus: rank #1 gets +0.05, ranks #2-3 get +0.02
+7. Return top-N results sorted by RRF score
 ```
+
+For MVP: skip LLM query expansion (steps 3, 5). Only fuse FTS5 + Qdrant results with equal weights.
 
 ---
 
@@ -289,8 +326,10 @@ Dynamic prompt built per request:
 
 ### Context Management
 
-- Send: system prompt + last N messages (token budget: ~8000 tokens for context)
-- Tool calls/results stored as messages in conversation chain
+- Send: system prompt + recent messages within token budget (~8000 tokens)
+- **Message selection**: Load messages newest-first, accumulate until token budget reached. Always include complete tool_call→tool_result chains (never split them)
+- **Token estimation**: ~4 chars per token (rough estimate for Chinese+English mixed content)
+- **Message serialization in DB**: `tool_calls` stores OpenAI-format `tool_calls` array as JSON string. `tool_results` stores matching results array as JSON string. During context reconstruction, these are parsed and formatted as separate assistant/tool messages for the LLM
 - No summary compression in MVP
 
 ---
@@ -299,35 +338,46 @@ Dynamic prompt built per request:
 
 ```
 # User
-POST   /api/user                    # Create user
-GET    /api/user/:id                # Get user info
-PUT    /api/user/:id                # Update user (nickname)
+POST   /api/user                    # Body: { email, name } → { id, email, name }
+GET    /api/user/:id                # → { id, email, name, ai_nickname }
+PUT    /api/user/:id                # Body: { name?, ai_nickname? } → updated user
 
 # Conversations
-GET    /api/conversations           # List conversations
-POST   /api/conversations           # Create conversation
-DELETE /api/conversations/:id       # Delete conversation
+GET    /api/conversations           # Query: ?userId= → [{ id, title, created_at }]
+POST   /api/conversations           # Body: { userId, title? } → { id, title }
+DELETE /api/conversations/:id       # → 204
 
 # Chat (core)
-POST   /api/chat/:convId            # Send message, SSE stream response
+POST   /api/chat/:convId            # Body: { content: string } Headers: X-User-Id
+                                    # → SSE stream of ChatEvent
 
 # Tasks
-GET    /api/tasks                   # List tasks
-POST   /api/tasks                   # Create task
-PUT    /api/tasks/:id               # Update task
-DELETE /api/tasks/:id               # Delete task
+GET    /api/tasks                   # Query: ?userId=&status= → [{ id, title, ... }]
+POST   /api/tasks                   # Body: { userId, title, description?, priority? }
+PUT    /api/tasks/:id               # Body: { title?, description?, status?, priority? }
+DELETE /api/tasks/:id               # → 204
 
 # Files
-POST   /api/files/upload            # Upload file
-GET    /api/files                   # List files
-DELETE /api/files/:id               # Delete file
+POST   /api/files/upload            # FormData: { file, userId } → { id, filename, ... }
+GET    /api/files                   # Query: ?userId= → [{ id, filename, size, ... }]
+DELETE /api/files/:id               # → 204 (also removes chunks + Qdrant vectors)
 
 # Admin (testing)
-POST   /api/admin/process-outbox    # Manually trigger outbox processing
-GET    /api/admin/outbox-status     # Check outbox status
+POST   /api/admin/process-outbox    # → { processed: number }
+GET    /api/admin/outbox-status     # → { pending, processing, failed, completed }
 
 # Static
 GET    /*                           # Frontend HTML/JS/CSS
+```
+
+### ChatEvent SSE Format
+
+```
+data: {"type":"text","content":"正在搜索..."}
+data: {"type":"tool_call","name":"web_search","args":{"q":"query"},"call_id":"call_123"}
+data: {"type":"tool_result","name":"web_search","call_id":"call_123","result":"..."}
+data: {"type":"text","content":"根据搜索结果..."}
+data: [DONE]
 ```
 
 All endpoints stateless, curl-friendly for testing.
@@ -344,16 +394,52 @@ Single-page app, three view states managed by JS DOM manipulation:
 
 No router, no build step. Static files served by Worker from `public/`.
 
-### SSE Handling
+### Layout Structure
 
-```javascript
-const eventSource = new EventSource(`/api/chat/${convId}`, {
-  headers: { 'X-User-Id': userId }
-});
-// or fetch with ReadableStream for POST
+```
+┌─────────────────────────────────────────┐
+│ Header: AI Assistant    [Workspace] [⚙] │
+├──────────────────┬──────────────────────┤
+│                  │                      │
+│ Conversation     │   Chat / Workspace   │
+│ List (sidebar)   │   (main area)        │
+│                  │                      │
+│  - Conv 1        │   Messages:          │
+│  - Conv 2        │   [user] Hello       │
+│  + New Chat      │   [ai] Hi! How can   │
+│                  │       I help?        │
+│                  │                      │
+│                  │   [tool_call badge]  │
+│                  │                      │
+│                  ├──────────────────────┤
+│                  │ Input: [Type...] ▶   │
+└──────────────────┴──────────────────────┘
 ```
 
-POST-based SSE (since we send message body):
+### Chat View Features
+
+- Message bubbles: user (right, blue), assistant (left, gray)
+- Tool calls shown as collapsible badges: `🔧 web_search("query")` → click to expand result
+- SSE streaming: text appears incrementally as it arrives
+- Auto-scroll to bottom on new content
+- Input: textarea + send button, Enter to send, Shift+Enter for newline
+
+### Workspace View Features
+
+- File list with filename, size, upload date, delete button
+- Upload area: drag-and-drop or click to select
+- Upload progress bar
+- File type icons (PDF, DOC, TXT, MD)
+
+### Conversation Management
+
+- Sidebar lists conversations (title auto-generated from first message)
+- Click to switch conversation
+- "New Chat" button creates new conversation
+- Delete conversation (X button, confirmation dialog)
+
+### SSE Handling (POST-based)
+
 ```javascript
 const response = await fetch(`/api/chat/${convId}`, {
   method: 'POST',
@@ -361,8 +447,26 @@ const response = await fetch(`/api/chat/${convId}`, {
   body: JSON.stringify({ content: message })
 });
 const reader = response.body.getReader();
-// parse SSE events from stream
+const decoder = new TextDecoder();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const text = decoder.decode(value);
+  // Parse SSE lines: "data: {json}\n\n"
+  for (const line of text.split('\n')) {
+    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+      const event = JSON.parse(line.slice(6));
+      // Update DOM based on event.type
+    }
+  }
+}
 ```
+
+### Error Handling in UI
+
+- Network error: show error banner, retry button
+- SSE stream interrupted: show "Connection lost" message, allow retry
+- Tool execution error: show in tool_call badge with error styling
 
 ---
 
