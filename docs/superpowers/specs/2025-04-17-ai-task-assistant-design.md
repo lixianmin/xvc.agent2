@@ -48,8 +48,8 @@ User message → [LLM call] → parse response
 
 - `AgentLoop` class, method `run(userId, conversationId, userMessage)` returns `ReadableStream` (SSE)
 - SSE events: `{ type: "text" | "tool_call" | "tool_result", ... }`
-- Max 15 tool-calling rounds per request
-- System prompt dynamically built: user info + date + tool descriptions + relevant chunks from RAG
+- Max 30 tool-calling rounds per request
+- System prompt dynamically built: user info + tool descriptions + date + relevant chunks from RAG
 
 ### Tools
 
@@ -79,9 +79,9 @@ During the agent loop:
 4. All messages in a single conversation share the same `conversation_id`
 5. If the loop completes, the final assistant response is the last saved message
 
-### Deep Research & Sub-Agent Planning
+### Deep Research
 
-Not a separate tool. The agent loop supports sub-agent planning through multi-round tool calls orchestrated by a research-specific system prompt extension:
+Not a separate tool. The agent loop supports deep research through multi-round tool calls orchestrated by a research-specific system prompt extension:
 
 1. LLM receives complex research question
 2. Research prompt instructs: decompose into sub-questions, search each, synthesize
@@ -90,7 +90,21 @@ Not a separate tool. The agent loop supports sub-agent planning through multi-ro
 5. After all sub-questions researched: synthesizes structured report with citations
 6. 15-round limit provides space for 3-5 sub-questions with search+fetch each
 
-This satisfies the "子代理规划（将任务拆解为多个子任务）" requirement through prompt-guided task decomposition within the agent loop, without a separate sub-agent infrastructure.
+### Sub-Agent (Deferred — See todo.md)
+
+**Design principles** (for future implementation):
+- Sub-agent is a **tool** (`spawn_agent`) that the main LLM can call
+- Sub-agent runs with **isolated context**: its own system prompt, no access to parent conversation
+- Input: task description + relevant context (explicitly passed by main agent)
+- Output: structured result returned to main agent as tool_result
+- Main agent decides how to use the result
+
+**Current workaround**: Deep research uses prompt-guided multi-round tool calls within the same agent loop. No context isolation, but sufficient for search-heavy tasks.
+
+**Architecture considerations (already accounted for)**:
+- `AgentLoop` class should remain composable: a sub-agent is just another `AgentLoop.run()` call with different parameters
+- Tool dispatch should not assume singleton state — avoid global mutable state in tool handlers
+- System prompt builder should accept arbitrary instructions, not just hardcoded templates
 
 ### Error Handling
 
