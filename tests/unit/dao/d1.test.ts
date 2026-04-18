@@ -473,4 +473,17 @@ describe('Document & Chunk DAO', () => {
     expect(row.content).toBe('用户喜欢 TypeScript');
     expect(row.expires_at).toBeNull();
   });
+
+  it('searchFTS excludes expired chat memories', async () => {
+    await insertChatMemory(db, { userId, content: '过期记忆关键词唯一标识xyz999', category: 'plan' });
+    await db.prepare("UPDATE chunks SET expires_at = datetime('now', '+8 hours', '-1 day') WHERE source = 'chat'").run();
+    const results = await searchFTS(db, '过期记忆关键词唯一标识xyz999', 10);
+    expect(results.length).toBe(0);
+  });
+
+  it('searchFTS includes non-expired chat memories', async () => {
+    await insertChatMemory(db, { userId, content: '有效记忆关键词唯一标识abc888', category: 'fact' });
+    const results = await searchFTS(db, '有效记忆关键词唯一标识abc888', 10);
+    expect(results.length).toBeGreaterThanOrEqual(1);
+  });
 });
