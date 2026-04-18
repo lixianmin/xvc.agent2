@@ -8,7 +8,7 @@
 
 - **对话式任务管理** — 通过自然语言创建、更新、查询、删除任务
 - **AI 子代理系统** — 复杂研究任务自动拆解，子代理并行执行、上下文隔离
-- **混合 RAG 检索** — FTS5 关键词 + Qdrant 向量搜索，RRF 融合排序
+- **混合 RAG 检索** — FTS5 关键词 + Qdrant 向量搜索，RRF 融合 + MMR 重排，兼顾相关性与多样性
 - **文件处理流水线** — 上传 PDF/DOCX/TXT/MD/图片 → 自动解析 → 分块 → 向量化 → 存储
 - **图片 OCR** — 上传图片通过 GLM-4.6V 进行 OCR 识别，提取文字入 RAG
 - **长期记忆** — 用户偏好和事实通过 `memory_save` 工具持久化，跨对话召回
@@ -33,7 +33,7 @@ Cloudflare Worker (Hono)
 │   ├── qdrant.ts         — Qdrant HTTP API
 │   └── outbox.ts         — Outbox 保证 D1↔Qdrant 数据一致性
 ├── src/services/
-│   ├── search.ts         — 混合搜索：FTS5 + Qdrant → RRF 融合
+│   ├── search.ts         — 混合搜索：FTS5 + Qdrant → RRF 融合 + MMR 重排
 │   ├── upload.ts         — R2 → 解析 → 清洗 → 分块 → 向量化 → Qdrant
 │   ├── web.ts            — Serper 搜索 + URL 抓取
 │   └── ...
@@ -76,6 +76,7 @@ Cloudflare Worker (Hono)
   → FTS5 关键词搜索 (BM25)
   → Qdrant 向量搜索
   → RRF 融合排序
+  → MMR 多样性重排
   → Top-K 结果注入 system prompt 作为 RAG 上下文
 ```
 
@@ -120,6 +121,7 @@ cp .dev.vars.example .dev.vars
 
 ```
 GLM_API_KEY=你的_glm_api_key
+SILICONFLOW_API_KEY=你的_siliconflow_api_key
 SERPER_API_KEY=你的_serper_api_key
 QDRANT_URL=https://你的集群.qdrant.io
 QDRANT_API_KEY=你的_qdrant_api_key
@@ -175,6 +177,7 @@ npx wrangler r2 bucket create xvc-agent2-files
 
 # 5. 设置 Worker 密钥
 npx wrangler secret put GLM_API_KEY
+npx wrangler secret put SILICONFLOW_API_KEY
 npx wrangler secret put SERPER_API_KEY
 npx wrangler secret put QDRANT_URL
 npx wrangler secret put QDRANT_API_KEY
@@ -212,7 +215,7 @@ npm run deploy
 
 ### 记忆召回（RAG）的设计与流程
 
-采用混合搜索策略：FTS5 关键词搜索（BM25 评分）+ Qdrant 向量搜索（余弦相似度），通过 RRF（Reciprocal Rank Fusion）融合排序。文件上传后经过解析（PDF/DOCX/TXT/MD）、清洗（空白/控制字符/HTML/NFC 归一化）、标题感知分块（~500 tokens，15% overlap）、向量化（GLM embedding），写入 D1 + Qdrant + FTS5 索引。通过 Outbox 模式保证 D1 与 Qdrant 的最终一致性。
+采用混合搜索策略：FTS5 关键词搜索（BM25 评分）+ Qdrant 向量搜索（余弦相似度），通过 RRF（Reciprocal Rank Fusion）融合排序，再经 MMR（Maximal Marginal Relevance）重排以提升结果多样性。文件上传后经过解析（PDF/DOCX/TXT/MD）、清洗（空白/控制字符/HTML/NFC 归一化）、标题感知分块（~500 tokens，15% overlap）、向量化（GLM embedding），写入 D1 + Qdrant + FTS5 索引。通过 Outbox 模式保证 D1 与 Qdrant 的最终一致性。
 
 ### 文件处理与向量化细节
 
@@ -224,4 +227,4 @@ npm run deploy
 
 ## License
 
-MIT
+Apache-2.0

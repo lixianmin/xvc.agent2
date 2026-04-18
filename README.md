@@ -8,7 +8,7 @@ An intelligent conversational task management assistant powered by AI agents, de
 
 - **Conversational Task Management** — Create, update, query, and delete tasks through natural language
 - **AI Sub-Agent System** — Complex research tasks are decomposed and executed in parallel by isolated sub-agents
-- **Hybrid RAG Search** — FTS5 keyword + Qdrant vector search with RRF fusion for document retrieval
+- **Hybrid RAG Search** — FTS5 keyword + Qdrant vector search, RRF fusion + MMR reranking for relevance and diversity
 - **File Processing Pipeline** — Upload PDF/DOCX/TXT/MD/Images → auto parse → chunk → embed → vector store
 - **Image OCR** — Upload images for OCR via GLM-4.6V, extracted text enters RAG pipeline
 - **Long-term Memory** — User preferences and facts saved via `memory_save`, retrieved across conversations
@@ -33,7 +33,7 @@ Cloudflare Worker (Hono)
 │   ├── qdrant.ts         — Qdrant HTTP API
 │   └── outbox.ts         — Outbox for D1↔Qdrant consistency
 ├── src/services/
-│   ├── search.ts         — Hybrid search: FTS5 + Qdrant → RRF fusion
+│   ├── search.ts         — Hybrid search: FTS5 + Qdrant → RRF fusion + MMR rerank
 │   ├── upload.ts         — R2 → parse → clean → chunk → embed → Qdrant
 │   ├── web.ts            — Serper search + URL fetch
 │   └── ...
@@ -103,6 +103,7 @@ Create `.dev.vars` in the project root:
 
 ```
 GLM_API_KEY=your_glm_api_key
+SILICONFLOW_API_KEY=your_siliconflow_api_key
 SERPER_API_KEY=your_serper_api_key
 QDRANT_URL=https://your-cluster.qdrant.io
 QDRANT_API_KEY=your_qdrant_api_key
@@ -159,6 +160,7 @@ npx wrangler r2 bucket create xvc-agent2-files
 
 # 5. Set secrets
 npx wrangler secret put GLM_API_KEY
+npx wrangler secret put SILICONFLOW_API_KEY
 npx wrangler secret put SERPER_API_KEY
 npx wrangler secret put QDRANT_URL
 npx wrangler secret put QDRANT_API_KEY
@@ -190,4 +192,4 @@ npm run deploy
 
 ## License
 
-MIT
+Apache-2.0
