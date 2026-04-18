@@ -71,8 +71,7 @@ describe('Qdrant DAO', () => {
     expect(call[0]).toBe('http://localhost:6333/collections/chunks/points/delete');
     expect(call[1].method).toBe('POST');
     const body = JSON.parse(call[1].body);
-    expect(body.filter.should).toHaveLength(3);
-    expect(body.filter.should[0]).toEqual({ key: 'chunk_id', match: { value: 1 } });
+    expect(body.ids).toEqual(['1', '2', '3']);
   });
 
   it('sends api-key header on every request', async () => {

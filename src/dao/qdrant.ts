@@ -71,14 +71,11 @@ export class QdrantDAO {
   }
 
   async deleteByChunkIds(chunkIds: number[]): Promise<void> {
+    if (chunkIds.length === 0) return;
     await fetch(this.collectionUrl('/points/delete'), {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify({
-        filter: {
-          should: chunkIds.map((id) => ({ key: 'chunk_id', match: { value: id } })),
-        },
-      }),
+      body: JSON.stringify({ ids: chunkIds.map(String) }),
     });
   }
 }

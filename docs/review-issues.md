@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 2 Critical, 8 Important, 14 Minor. (C3, C4, C5, I2, I3 fixed)
+Full project review — 2 Critical, 7 Important, 14 Minor. (C3, C4, C5, I2, I3, I5 fixed)
 
 ## Critical
 
@@ -40,11 +40,7 @@ Full project review — 2 Critical, 8 Important, 14 Minor. (C3, C4, C5, I2, I3 f
 - **影响**: 静默错误行为，如 `task_delete` 无 `id`
 - **修复方向**: 解析失败返回错误 tool_result
 
-### I5: deleteByChunkIds 语义不精确
-- **位置**: `src/dao/qdrant.ts:73-83`
-- **问题**: 用 `should` (OR) filter 删除，应用 points API 直接删除
-- **影响**: 功能正确但语义不精确，可能误删
-- **修复方向**: 用 `POST /collections/{name}/points { ids: [...] }`
+### ~~I5: deleteByChunkIds 语义不精确~~ ✅ Fixed — 用 ids 数组直接删除
 
 ### I6: parseInt 不检查 NaN
 - **位置**: `src/index.ts:45,58,71,111,153`
