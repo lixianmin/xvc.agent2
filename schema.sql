@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS documents (
     size INTEGER NOT NULL,
     r2_key TEXT NOT NULL,
     hash TEXT NOT NULL,
+    description TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
@@ -89,3 +90,5 @@ CREATE INDEX IF NOT EXISTS idx_chunks_user ON chunks(user_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox_events(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_outbox_chunk ON outbox_events(chunk_id);
+
+ALTER TABLE documents ADD COLUMN description TEXT;

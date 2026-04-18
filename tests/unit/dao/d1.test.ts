@@ -319,7 +319,7 @@ describe('Document & Chunk DAO', () => {
   beforeAll(async () => {
     db = env.DB;
     await db.exec(
-      "CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), filename TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, r2_key TEXT NOT NULL, hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
+      "CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), filename TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, r2_key TEXT NOT NULL, hash TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
     );
     await db.exec(
       "CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE, user_id INTEGER NOT NULL, seq INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL, token_count INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'document', expires_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",

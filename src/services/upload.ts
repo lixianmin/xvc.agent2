@@ -26,6 +26,12 @@ export async function processFileUpload(
 
   const hash = await computeHash(buffer);
 
+  const rawText = await parseFile(buffer, file.type, file.name, { visionClient: deps.visionClient });
+  const text = cleanText(rawText);
+  const chunks = chunkText(text);
+
+  const description = text.slice(0, 100).replace(/\n/g, ' ').trim();
+
   const doc = await createDocument(deps.d1, {
     userId: deps.userId,
     filename: file.name,
@@ -33,11 +39,8 @@ export async function processFileUpload(
     size: buffer.byteLength,
     r2Key,
     hash,
+    description: description || undefined,
   });
-
-  const rawText = await parseFile(buffer, file.type, file.name, { visionClient: deps.visionClient });
-  const text = cleanText(rawText);
-  const chunks = chunkText(text);
 
   for (const chunk of chunks) {
     const saved = await insertChunk(deps.d1, {

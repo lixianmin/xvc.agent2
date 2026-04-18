@@ -222,6 +222,24 @@ app.get('/api/files/list', authMiddleware, async (c) => {
   return c.json(docs);
 });
 
+app.get('/api/files/download', authMiddleware, async (c) => {
+  const id = parseId(c.req.query('id'));
+  if (id === null) return c.json({ error: 'Invalid id' }, 400);
+  const doc = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<any>();
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+  const user = c.get('user');
+  if (doc.user_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const obj = await c.env.FILES.get(doc.r2_key);
+  if (!obj) return c.json({ error: 'File not found in storage' }, 404);
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': doc.mime_type,
+      'Content-Disposition': `attachment; filename="${doc.filename}"`,
+      'Content-Length': String(doc.size),
+    },
+  });
+});
+
 app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
   const { id } = await c.req.json();
   const { getChunkIdsByDoc } = await import('./dao/d1');

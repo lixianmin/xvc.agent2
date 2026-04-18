@@ -595,19 +595,39 @@ function renderFiles(files) {
         return;
     }
     files.forEach(file => {
+        const isImage = file.mime_type && file.mime_type.startsWith('image/');
         const item = document.createElement('div');
         item.className = 'file-item';
+        const descHtml = file.description ? `<div class="file-desc">${escapeHtml(file.description)}</div>` : '';
+        const imgHtml = isImage ? `<img class="file-thumb" src="/api/files/download?id=${file.id}" alt="${escapeHtml(file.filename)}" loading="lazy">` : '';
         item.innerHTML = `
+            ${imgHtml}
             <span class="file-icon">${getFileIcon(file.mime_type)}</span>
             <div class="file-info">
                 <div class="file-name">${escapeHtml(file.filename)} <span class="file-ext">${escapeHtml((file.filename.split('.').pop() || '').toUpperCase())}</span></div>
+                ${descHtml}
                 <div class="file-meta">${formatSize(file.size)} &middot; ${escapeHtml(file.created_at || '')}</div>
             </div>
-            <button class="file-delete" title="Delete" aria-label="Delete file">&times;</button>
+            <div class="file-actions">
+                <a class="file-download" href="/api/files/download?id=${file.id}" download="${escapeHtml(file.filename)}" title="Download" aria-label="Download file">&#x2913;</a>
+                <button class="file-delete" title="Delete" aria-label="Delete file">&times;</button>
+            </div>
         `;
+        if (isImage) {
+            const thumb = item.querySelector('.file-thumb');
+            thumb.addEventListener('click', (e) => { e.preventDefault(); showImagePreview(file); });
+        }
         item.querySelector('.file-delete').addEventListener('click', () => removeFile(file.id));
         list.appendChild(item);
     });
+}
+
+function showImagePreview(file) {
+    const overlay = document.createElement('div');
+    overlay.className = 'image-preview-overlay';
+    overlay.innerHTML = `<div class="image-preview-container"><img src="/api/files/download?id=${file.id}" alt="${escapeHtml(file.filename)}"><button class="image-preview-close">&times;</button></div>`;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.classList.contains('image-preview-close')) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
 async function uploadFiles(fileList) {

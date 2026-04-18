@@ -327,6 +327,7 @@ export type Document = {
   size: number;
   r2_key: string;
   hash: string;
+  description: string | null;
   created_at: string;
 };
 
@@ -337,12 +338,13 @@ type CreateDocumentInput = {
   size: number;
   r2Key: string;
   hash: string;
+  description?: string;
 };
 
 export async function createDocument(db: D1Database, input: CreateDocumentInput): Promise<Document> {
   const result = await db
-    .prepare('INSERT INTO documents (user_id, filename, mime_type, size, r2_key, hash) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(input.userId, input.filename, input.mimeType, input.size, input.r2Key, input.hash)
+    .prepare('INSERT INTO documents (user_id, filename, mime_type, size, r2_key, hash, description) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(input.userId, input.filename, input.mimeType, input.size, input.r2Key, input.hash, input.description ?? null)
     .run();
   const id = result.meta.last_row_id as number;
   return db.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<Document>()!;
