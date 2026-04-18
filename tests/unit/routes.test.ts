@@ -96,6 +96,22 @@ describe('GET /api/user', () => {
     expect(body.id).toBe(user.id);
     expect(body.email).toBe('getuser@test.com');
   });
+
+  it('returns 400 when id is not a number', async () => {
+    const res = await app.request('/api/user?id=abc', {
+      headers: { 'X-User-Id': '1' },
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when id is empty', async () => {
+    const res = await app.request('/api/user?id=', {
+      headers: { 'X-User-Id': '1' },
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('Auth middleware', () => {
@@ -128,6 +144,22 @@ describe('POST /api/chat', () => {
     const text = await res.text();
     expect(text).toContain('data:');
   }, 15_000);
+
+  it('returns 400 when threadId is not a number', async () => {
+    const db = env.DB as D1Database;
+    const user = await createUser(db, { email: 'chatnan@test.com', name: 'ChatNaN' });
+
+    const res = await app.request('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': String(user.id),
+      },
+      body: JSON.stringify({ threadId: 'abc', content: 'Hello' }),
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('POST /api/tasks/create', () => {
@@ -166,6 +198,14 @@ describe('GET /api/tasks/list', () => {
     const body = await res.json();
     expect(Array.isArray(body)).toBe(true);
     expect(body.some((t: any) => t.title === 'ListTask')).toBe(true);
+  });
+
+  it('returns 400 when userId is not a number', async () => {
+    const res = await app.request('/api/tasks/list?userId=abc', {
+      headers: { 'X-User-Id': '1' },
+    }, testEnv());
+
+    expect(res.status).toBe(400);
   });
 });
 

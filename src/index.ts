@@ -30,6 +30,12 @@ type Env = { Bindings: Bindings; Variables: Variables };
 
 const app = new Hono<Env>();
 
+function parseId(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 app.get('/api/health', (c) => {
   log.info('index:health', 'health check');
   return c.json({ status: 'ok', env: { hasGLMKey: !!c.env.GLM_API_KEY, hasSiliconKey: !!c.env.SILICONFLOW_API_KEY, hasQdrantUrl: !!c.env.QDRANT_URL } });
@@ -42,7 +48,8 @@ app.post('/api/user/create', async (c) => {
 });
 
 app.get('/api/user', authMiddleware, async (c) => {
-  const id = parseInt(c.req.query('id') ?? '');
+  const id = parseId(c.req.query('id'));
+  if (id === null) return c.json({ error: 'Invalid id' }, 400);
   const user = await getUser(c.env.DB, id);
   if (!user) return c.json({ error: 'User not found' }, 404);
   return c.json(user);
@@ -55,7 +62,8 @@ app.post('/api/user/update', authMiddleware, async (c) => {
 });
 
 app.get('/api/threads/list', authMiddleware, async (c) => {
-  const userId = parseInt(c.req.query('userId') ?? '');
+  const userId = parseId(c.req.query('userId'));
+  if (userId === null) return c.json({ error: 'Invalid userId' }, 400);
   const threads = await listThreads(c.env.DB, userId);
   return c.json(threads);
 });
@@ -68,7 +76,8 @@ app.post('/api/threads/create', authMiddleware, async (c) => {
 });
 
 app.get('/api/threads/messages', authMiddleware, async (c) => {
-  const id = parseInt(c.req.query('id') ?? '');
+  const id = parseId(c.req.query('id'));
+  if (id === null) return c.json({ error: 'Invalid id' }, 400);
   const msgs = await loadMessages(c.env.DB, id);
   return c.json(msgs);
 });
@@ -88,7 +97,8 @@ app.post('/api/threads/update-title', authMiddleware, async (c) => {
 
 app.post('/api/chat', authMiddleware, async (c) => {
   const { threadId: threadIdRaw, content } = await c.req.json();
-  const threadId = parseInt(threadIdRaw);
+  const threadId = parseId(threadIdRaw);
+  if (threadId === null) return c.json({ error: 'Invalid threadId' }, 400);
   const user = c.get('user');
 
   log.info('index:chat', 'chat request', { threadId, userId: user.id, contentLen: content.length, hasGLMKey: !!c.env.GLM_API_KEY });
@@ -109,7 +119,8 @@ app.post('/api/chat', authMiddleware, async (c) => {
 });
 
 app.get('/api/tasks/list', authMiddleware, async (c) => {
-  const userId = parseInt(c.req.query('userId') ?? '');
+  const userId = parseId(c.req.query('userId'));
+  if (userId === null) return c.json({ error: 'Invalid userId' }, 400);
   const status = c.req.query('status') ?? undefined;
   const tasks = await listTasks(c.env.DB, userId, status);
   return c.json(tasks);
@@ -150,7 +161,8 @@ app.post('/api/files/upload', authMiddleware, async (c) => {
 });
 
 app.get('/api/files/list', authMiddleware, async (c) => {
-  const userId = parseInt(c.req.query('userId') ?? '');
+  const userId = parseId(c.req.query('userId'));
+  if (userId === null) return c.json({ error: 'Invalid userId' }, 400);
   const docs = await listDocuments(c.env.DB, userId);
   return c.json(docs);
 });
