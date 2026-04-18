@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, getTaskOwnerId, createDocument, listDocuments, deleteDocument, getDocumentOwnerId, getThreadOwnerId } from './dao/d1';
+import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, getTaskOwnerId, createDocument, listDocuments, deleteDocument, renameDocument, getDocumentOwnerId, getThreadOwnerId } from './dao/d1';
 import { createEvent, markCompleted, markFailed, getPendingEvents, claimEvent } from './dao/outbox';
 import { LLMClient } from './llm/client';
 import { EmbeddingClient } from './llm/embedding';
@@ -219,6 +219,13 @@ app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
     await qdrant.deleteByChunkIds(chunkIds);
   }
   return c.json({ ok: true });
+});
+
+app.post('/api/files/rename', authMiddleware, ownDocumentByBody, async (c) => {
+  const { id, filename } = await c.req.json();
+  if (!filename || typeof filename !== 'string') return c.json({ error: 'Invalid filename' }, 400);
+  const doc = await renameDocument(c.env.DB, id, filename);
+  return c.json(doc);
 });
 
 app.post('/api/admin/process-outbox', authMiddleware, async (c) => {

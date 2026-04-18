@@ -356,6 +356,11 @@ export async function listDocuments(db: D1Database, userId: number): Promise<Doc
   return result.results;
 }
 
+export async function renameDocument(db: D1Database, id: number, filename: string): Promise<Document> {
+  await db.prepare('UPDATE documents SET filename = ? WHERE id = ?').bind(filename, id).run();
+  return db.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<Document>()!;
+}
+
 export async function deleteDocument(db: D1Database, id: number): Promise<boolean> {
   const result = await db.batch([
     db.prepare('DELETE FROM chunks WHERE doc_id = ?').bind(id),

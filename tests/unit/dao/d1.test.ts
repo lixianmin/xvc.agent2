@@ -19,6 +19,7 @@ import {
   deleteDocument,
   insertChunk,
   searchFTS,
+  renameDocument,
 } from '../../../src/dao/d1';
 
 describe('User DAO', () => {
@@ -432,5 +433,21 @@ describe('Document & Chunk DAO', () => {
   it('deleteDocument returns false for non-existent', async () => {
     const result = await deleteDocument(db, 99999);
     expect(result).toBe(false);
+  });
+
+  it('renames a document', async () => {
+    const doc = await createDocument(db, {
+      userId,
+      filename: 'original.txt',
+      mimeType: 'text/plain',
+      size: 100,
+      r2Key: 'uploads/original.txt',
+      hash: 'rename1',
+    });
+    const updated = await renameDocument(db, doc.id, 'renamed.txt');
+    expect(updated.filename).toBe('renamed.txt');
+    expect(updated.id).toBe(doc.id);
+
+    await deleteDocument(db, doc.id);
   });
 });

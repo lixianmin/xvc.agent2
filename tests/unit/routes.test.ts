@@ -417,3 +417,49 @@ describe('Authorization: ownership checks', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('POST /api/files/rename', () => {
+  let counter = Date.now();
+  function uid() { return ++counter; }
+
+  it('renames a file', async () => {
+    const db = env.DB as D1Database;
+    const n = uid();
+    const user = await createUser(db, { email: `rename${n}@test.com`, name: 'RenameUser' });
+    const { createDocument } = await import('../../../src/dao/d1');
+    const doc = await createDocument(db, {
+      userId: user.id, filename: 'old.txt', mimeType: 'text/plain',
+      size: 10, r2Key: 'test', hash: `h${n}`,
+    });
+
+    const res = await app.request('/api/files/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(user.id) },
+      body: JSON.stringify({ id: doc.id, filename: 'new.txt' }),
+    }, testEnv());
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.filename).toBe('new.txt');
+  });
+
+  it('rejects rename of another users file', async () => {
+    const db = env.DB as D1Database;
+    const n = uid();
+    const userA = await createUser(db, { email: `rename-a${n}@test.com`, name: 'A' });
+    const userB = await createUser(db, { email: `rename-b${n}@test.com`, name: 'B' });
+    const { createDocument } = await import('../../../src/dao/d1');
+    const doc = await createDocument(db, {
+      userId: userA.id, filename: 'secret.txt', mimeType: 'text/plain',
+      size: 10, r2Key: 'secret', hash: `hs${n}`,
+    });
+
+    const res = await app.request('/api/files/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: doc.id, filename: 'hacked.txt' }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+});
