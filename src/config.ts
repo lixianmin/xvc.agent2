@@ -3,6 +3,10 @@ export const config = {
     model: 'glm-5-turbo',
     baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
   },
+  vision: {
+    model: 'glm-5v-turbo',
+    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+  },
   embedding: {
     model: 'BAAI/bge-m3',
     baseUrl: 'https://api.siliconflow.cn/v1',
@@ -38,12 +42,17 @@ export const config = {
   },
   upload: {
     maxFileSize: 20 * 1024 * 1024,
+    maxImageSize: 10 * 1024 * 1024,
     allowedMimeTypes: [
       'text/plain',
       'text/markdown',
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
     ],
-    allowedExtensions: ['txt', 'md', 'pdf', 'docx'],
+    allowedExtensions: ['txt', 'md', 'pdf', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp'],
   },
 };
