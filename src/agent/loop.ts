@@ -165,6 +165,7 @@ export class AgentLoop {
 
       const textParts: string[] = [];
       const toolCalls: ToolCall[] = [];
+      const toolArgs: Map<string, Record<string, unknown>> = new Map();
 
       for await (const event of this.deps.llm.chat(messages, tools)) {
         if (event.type === 'text') {
@@ -172,6 +173,7 @@ export class AgentLoop {
           textParts.push(event.content);
         } else if (event.type === 'tool_call') {
           yield { type: 'tool_call', name: event.name, args: event.args, call_id: event.call_id };
+          toolArgs.set(event.call_id, event.args ?? {});
           toolCalls.push({
             id: event.call_id,
             type: 'function',
@@ -218,8 +220,7 @@ export class AgentLoop {
       };
 
       for (const tc of toolCalls) {
-        let args: Record<string, unknown> = {};
-        try { args = JSON.parse(tc.function.arguments); } catch { /* empty */ }
+        const args = toolArgs.get(tc.id) ?? {};
 
         let result: string;
 

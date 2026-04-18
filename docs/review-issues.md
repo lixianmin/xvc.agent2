@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 2 Critical, 7 Important, 14 Minor. (C3, C4, C5, I2, I3, I5 fixed)
+Full project review — 2 Critical, 6 Important, 14 Minor. (C3, C4, C5, I2, I3, I4, I5 fixed)
 
 ## Critical
 
@@ -34,11 +34,7 @@ Full project review — 2 Critical, 7 Important, 14 Minor. (C3, C4, C5, I2, I3, 
 
 ### ~~I3: keywordSearch 返回 doc_id: 0~~ ✅ Fixed — searchFTS SQL 加 `c.doc_id`
 
-### I4: tool args JSON 解析失败静默吞错
-- **位置**: `src/agent/loop.ts:260`
-- **问题**: `try { args = JSON.parse(tc.function.arguments); } catch {}` — 解析失败传入空 `{}`
-- **影响**: 静默错误行为，如 `task_delete` 无 `id`
-- **修复方向**: 解析失败返回错误 tool_result
+### ~~I4: tool args JSON 解析失败静默吞错~~ ✅ Fixed — loop 层用 toolArgs map 直传，LLM client 层解析失败带 _parseError
 
 ### ~~I5: deleteByChunkIds 语义不精确~~ ✅ Fixed — 用 ids 数组直接删除
 
@@ -79,7 +75,7 @@ Full project review — 2 Critical, 7 Important, 14 Minor. (C3, C4, C5, I2, I3, 
 ### M2: Document 类型重复定义 (d1.ts + upload.ts)，estimateTokens 重复 (d1.ts + chunker.ts)
 - **位置**: `src/dao/d1.ts`, `src/services/upload.ts`, `src/services/chunker.ts`
 
-### M3: Logger 时区用 Date.now() + 8h 伪造
+### 
 - **位置**: `src/services/logger.ts:4`
 - **修复**: 用 `toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' })`
 

@@ -149,6 +149,21 @@ describe('AgentLoop', () => {
     expect(dispatchTool).toHaveBeenCalledTimes(2);
   });
 
+  it('passes malformed tool args to dispatch without silently swallowing', async () => {
+    const llm = makeMockLLM([
+      [{ type: 'tool_call', name: 'web_search', args: { _parseError: 'LLM returned invalid JSON' }, call_id: 'c1' }],
+      [{ type: 'text', content: 'Recovered' }],
+    ]);
+    (dispatchTool as any).mockResolvedValue('{"error":"bad args"}');
+    deps = makeDeps(llm);
+
+    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
+    const events = await collectEvents(stream);
+
+    expect(dispatchTool).toHaveBeenCalledWith('web_search', { _parseError: 'LLM returned invalid JSON' }, expect.anything());
+    expect(events.some(e => e.type === 'tool_result')).toBe(true);
+  });
+
   it('stops after 30 rounds with limit_reached', async () => {
     const toolEvent: ChatEvent = { type: 'tool_call', name: 'web_search', args: { q: 'x' }, call_id: 'c0' };
     const rounds: ChatEvent[][] = [];

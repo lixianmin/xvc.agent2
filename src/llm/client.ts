@@ -79,7 +79,7 @@ export class LLMClient {
           if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
             for (const [, acc] of toolAccum) {
               let args: Record<string, unknown> = {};
-              try { args = JSON.parse(acc.args); } catch { /* empty */ }
+              try { args = JSON.parse(acc.args); } catch { args = { _parseError: `LLM returned invalid JSON for tool arguments: ${acc.args.slice(0, 200)}` }; }
               toolCallCount++;
               yield { type: 'tool_call', name: acc.name, args, call_id: acc.id };
             }
@@ -89,7 +89,7 @@ export class LLMClient {
 
         for (const [, acc] of toolAccum) {
           let args: Record<string, unknown> = {};
-          try { args = JSON.parse(acc.args); } catch { /* empty */ }
+          try { args = JSON.parse(acc.args); } catch { args = { _parseError: `LLM returned invalid JSON for tool arguments: ${acc.args.slice(0, 200)}` }; }
           toolCallCount++;
           yield { type: 'tool_call', name: acc.name, args, call_id: acc.id };
         }
