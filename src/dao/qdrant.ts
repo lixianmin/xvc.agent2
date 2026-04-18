@@ -88,7 +88,7 @@ export class QdrantDAO {
               {
                 must: [
                   { key: 'source', match: { value: 'chat' } },
-                  { range: { key: 'expires_at', gt: now } },
+                  { key: 'expires_at', range: { gt: now } },
                 ],
               },
             ],
