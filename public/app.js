@@ -600,7 +600,7 @@ function renderFiles(files) {
         item.innerHTML = `
             <span class="file-icon">${getFileIcon(file.mime_type)}</span>
             <div class="file-info">
-                <div class="file-name">${escapeHtml(file.filename)}</div>
+                <div class="file-name">${escapeHtml(file.filename)} <span class="file-ext">${escapeHtml((file.filename.split('.').pop() || '').toUpperCase())}</span></div>
                 <div class="file-meta">${formatSize(file.size)} &middot; ${escapeHtml(file.created_at || '')}</div>
             </div>
             <button class="file-delete" title="Delete" aria-label="Delete file">&times;</button>
