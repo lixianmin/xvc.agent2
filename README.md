@@ -125,7 +125,7 @@ npm run dev
 ### Test
 
 ```bash
-# Run all tests (165 tests, 17 files)
+# Run all tests (190 tests, 17 files)
 npm test
 
 # Watch mode
@@ -179,7 +179,7 @@ npm run deploy
 │   └── middleware/            # Auth middleware
 ├── public/                   # Frontend (HTML/CSS/JS)
 ├── tests/
-│   ├── unit/                 # 17 test files, 165 tests
+│   ├── unit/                 # 17 test files, 190 tests
 │   └── integration/          # Curl-based integration tests
 ├── docs/                     # Specs, plans, memory
 ├── schema.sql                # D1 database schema
