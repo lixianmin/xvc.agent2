@@ -77,4 +77,35 @@ describe('fetchUrl', () => {
     fetchMock.mockRejectedValueOnce(new Error('Network fail'));
     await expect(fetchUrl('https://bad.url')).rejects.toThrow('Network fail');
   });
+
+  it('rejects private IP addresses', async () => {
+    await expect(fetchUrl('http://192.168.1.1/secret')).rejects.toThrow('blocked');
+    await expect(fetchUrl('http://10.0.0.1/metadata')).rejects.toThrow('blocked');
+    await expect(fetchUrl('http://172.16.0.1/internal')).rejects.toThrow('blocked');
+    await expect(fetchUrl('http://127.0.0.1/admin')).rejects.toThrow('blocked');
+    await expect(fetchUrl('http://[::1]/admin')).rejects.toThrow('blocked');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects cloud metadata endpoint', async () => {
+    await expect(fetchUrl('http://169.254.169.254/latest/meta-data/')).rejects.toThrow('blocked');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-HTTP protocols', async () => {
+    await expect(fetchUrl('ftp://example.com/file')).rejects.toThrow();
+    await expect(fetchUrl('file:///etc/passwd')).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('allows HTTPS URLs', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => '<p>ok</p>',
+    });
+    const text = await fetchUrl('https://example.com/page');
+    expect(text).toBe('ok');
+    expect(fetchMock).toHaveBeenCalled();
+  });
 });

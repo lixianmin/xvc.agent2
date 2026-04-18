@@ -27,6 +27,8 @@ export async function serperSearch(query: string, apiKey: string): Promise<Searc
 }
 
 export async function fetchUrl(url: string): Promise<string> {
+  validateUrl(url);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -68,4 +70,51 @@ function stripHtml(html: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return text;
+}
+
+const PRIVATE_IP_RANGES = [
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^0\./,
+];
+
+function validateUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Unsupported protocol: ${parsed.protocol}`);
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (hostname === 'localhost') {
+    throw new Error('URL hostname is blocked: localhost');
+  }
+
+  if (hostname.startsWith('[')) {
+    const ipv6 = hostname.replace(/^\[|\]$/g, '');
+    if (ipv6 === '::1' || ipv6 === '::' || ipv6 === '0:0:0:0:0:0:0:1') {
+      throw new Error('URL hostname is blocked: loopback address');
+    }
+    if (ipv6.startsWith('fc') || ipv6.startsWith('fd') || ipv6.startsWith('fe80:')) {
+      throw new Error('URL hostname is blocked: private/local IPv6 address');
+    }
+  }
+
+  for (const range of PRIVATE_IP_RANGES) {
+    if (range.test(hostname)) {
+      throw new Error(`URL hostname is blocked: private IP ${hostname}`);
+    }
+  }
+
+  if (/^169\.254\./.test(hostname)) {
+    throw new Error(`URL hostname is blocked: link-local IP ${hostname}`);
+  }
 }
