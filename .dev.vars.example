@@ -1,0 +1,5 @@
+GLM_API_KEY=your_glm_api_key
+SERPER_API_KEY=your_serper_api_key
+QDRANT_URL=https://your-cluster.qdrant.io
+QDRANT_API_KEY=your_qdrant_api_key
+QDRANT_COLLECTION=xvc_agent_chunks
