@@ -136,9 +136,8 @@ app.post('/api/chat', authMiddleware, async (c) => {
 
   const deps = {
     d1: c.env.DB,
-    llm: new LLMClient({ apiKey: c.env.GLM_API_KEY, baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', model: 'GLM-5' }),
-    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' }),
-    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
+    llm: new LLMClient({ apiKey: c.env.GLM_API_KEY, baseUrl: config.llm.baseUrl, model: config.llm.model }),
+    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
     serperApiKey: c.env.SERPER_API_KEY,
   };
 
@@ -197,8 +196,7 @@ app.post('/api/files/upload', authMiddleware, async (c) => {
     r2: c.env.FILES,
     d1: c.env.DB,
     qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
-    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' }),
-    userId: user.id,
+    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),    userId: user.id,
   }, file);
 
   return c.json(doc);
@@ -236,7 +234,7 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
         const payload = event.payload ? JSON.parse(event.payload) : {};
         const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE id = ?').bind(event.chunk_id).first<any>();
         if (chunk) {
-          const embedding = new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' });
+          const embedding = new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model });
           const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
           const [vector] = await embedding.embed([chunk.content]);
           await qdrant.upsertVectors([{

@@ -6,7 +6,7 @@ import * as fs from 'fs';
 async function main() {
   const apiKey = process.env.GLM_API_KEY!;
   const baseUrl = 'https://open.bigmodel.cn/api/coding/paas/v4';
-  const model = 'GLM-5';
+  const model = 'glm-5-turbo';
 
   const tools = getToolDefinitions();
   const systemPrompt = buildSystemPrompt({

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 
 const apiKey = process.env.GLM_API_KEY!;
 const baseUrl = 'https://open.bigmodel.cn/api/coding/paas/v4';
-const model = 'GLM-5';
+const model = 'glm-5-turbo';
 
 const toolsDef = [
   { type: 'function', function: { name: 'task_create', description: 'Create a new task', parameters: { type: 'object', properties: { title: { type: 'string', description: 'Task title' }, description: { type: 'string', description: 'Task description' }, priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Task priority' } }, required: ['title'] } } },

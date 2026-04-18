@@ -395,7 +395,8 @@ describe('AgentLoop execute() generator', () => {
 
     const toolResults = events.filter(e => e.type === 'tool_result' && e.name === 'spawn_agent');
     expect(toolResults).toHaveLength(1);
-    const result = JSON.parse(toolResults[0].result);
+    const jsonPart = (toolResults[0] as any).result.split('\n\n')[0];
+    const result = JSON.parse(jsonPart);
     expect(result).toHaveLength(2);
     expect(result[0].task).toBe('task A');
     expect(result[0].result).toContain('Sub result for task A');
@@ -403,6 +404,29 @@ describe('AgentLoop execute() generator', () => {
 
     const statusEvents = events.filter(e => e.type === 'status');
     expect(statusEvents.some(s => s.content.includes('子代理'))).toBe(true);
+  });
+
+  it('spawn_agent tool_result includes report synthesis prompt', async () => {
+    let callIdx = 0;
+    const responses: ChatEvent[][] = [
+      [{ type: 'tool_call', name: 'spawn_agent', args: { tasks: ['task A'] }, call_id: 'sa-2' }],
+      [{ type: 'text', content: 'Done' }],
+    ];
+
+    const llm = makeMockLLM([]);
+    llm.chat = vi.fn().mockImplementation(() => {
+      const events = responses[callIdx++] ?? [];
+      return (async function* () { for (const e of events) yield e; })();
+    });
+
+    mockRunSub.mockResolvedValue('Sub result');
+
+    deps = makeDeps(llm);
+    const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG);
+    const events = await collectGeneratorEvents(gen);
+
+    const toolResult = events.find(e => e.type === 'tool_result' && e.name === 'spawn_agent');
+    expect((toolResult as any).result).toContain('结构化报告格式');
   });
 
   it('spawn_agent in runLoop dispatches sub-agents and yields results', async () => {
@@ -443,7 +467,8 @@ describe('AgentLoop execute() generator', () => {
 
       const toolResults = events.filter(e => e.type === 'tool_result' && e.name === 'spawn_agent');
       expect(toolResults).toHaveLength(1);
-      const result = JSON.parse(toolResults[0].result);
+      const jsonPart = (toolResults[0] as any).result.split('\n\n')[0];
+      const result = JSON.parse(jsonPart);
       expect(result).toHaveLength(2);
       expect(result[0].task).toBe('task A');
       expect(result[0].result).toContain('Sub result for task A');

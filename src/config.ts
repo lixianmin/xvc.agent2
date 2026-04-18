@@ -1,4 +1,12 @@
 export const config = {
+  llm: {
+    model: 'glm-5-turbo',
+    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+  },
+  embedding: {
+    model: 'BAAI/bge-m3',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+  },
   agent: {
     maxRounds: 30,
     ragTimeoutMs: 15_000,

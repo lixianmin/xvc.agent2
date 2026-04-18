@@ -17,7 +17,7 @@ function getToolDefinitions() {
 async function main() {
   const apiKey = process.env.GLM_API_KEY!;
   const baseUrl = 'https://open.bigmodel.cn/api/coding/paas/v4';
-  const model = 'GLM-5';
+  const model = 'glm-5-turbo';
 
   const tools = getToolDefinitions();
   const systemPrompt = `# 可用工具\n\n你可以使用以下工具：\n${JSON.stringify(tools, null, 2)}\n\n# 基本指令\n\n你是一个智能任务管理助手。\n\n## 核心能力\n- 任务管理：创建、查询、更新、删除任务\n- 网络搜索：搜索互联网获取最新信息\n- 文件管理：管理用户上传的文件和文档\n- 文档检索：从用户上传的文档中检索相关信息\n\n## 行为准则\n- 回复简洁明了，直奔主题\n- 主动使用工具完成任务，不要只是描述如何做\n- 使用用户使用的语言回复\n\n# 用户信息\n\n用户名：测试用户\n\n# 当前时间\n\n${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;

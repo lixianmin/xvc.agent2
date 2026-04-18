@@ -238,6 +238,7 @@ export class AgentLoop {
               result: settled[i].status === 'fulfilled' ? settled[i].value : `[子代理执行失败: ${(settled[i] as PromiseRejectedResult).reason}]`,
             })),
           );
+          result += '\n\n请根据以上子代理结果，按结构化报告格式整合输出。不要逐条复述，要分析、归纳、给出结论和建议。';
           log.info(`agent:${agentId}`, 'spawn_agent result', { taskCount: tasks.length });
         } else {
           log.info(`agent:${agentId}`, 'dispatching tool', { name: tc.function.name, callId: tc.id, args });
