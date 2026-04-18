@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 2 Critical, 10 Important, 14 Minor. (C3, C4, C5 fixed)
+Full project review — 2 Critical, 9 Important, 14 Minor. (C3, C4, C5, I2 fixed)
 
 ## Critical
 
@@ -30,11 +30,7 @@ Full project review — 2 Critical, 10 Important, 14 Minor. (C3, C4, C5 fixed)
 - **影响**: 丧失流式延迟优势，首 token 等待时间长
 - **修复方向**: 用 `res.body.getReader()` 增量处理 SSE
 
-### I2: hybrid search 重复调用 embedding API
-- **位置**: `src/services/search.ts:163,199`
-- **问题**: 同一 query 在 `vectorSearchWithVectors` 和 MMR reranking 中各调一次 embedding
-- **影响**: API 成本翻倍，延迟增加
-- **修复方向**: 缓存第一次 embedding 结果，传给 MMR
+### ~~I2: hybrid search 重复调用 embedding~~ ✅ Fixed — vectorSearchWithVectors 返回 queryVector 复用
 
 ### I3: keywordSearch 返回 doc_id: 0
 - **位置**: `src/services/search.ts:172`

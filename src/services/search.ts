@@ -127,12 +127,14 @@ export async function chunksSearch(
     log.info('search:chunksSearch', 'FTS results', { count: fts.length, topScores: fts.slice(0, 3).map(r => r.score) });
   }
 
-  const vec = vectorResults.status === 'fulfilled'
+  const vecOutput = vectorResults.status === 'fulfilled'
     ? vectorResults.value
     : (() => {
         log.warn('search:chunksSearch', 'vector search failed', { error: String(vectorResults.reason) });
-        return [];
+        return { results: [] as ChunkWithVector[], queryVector: [] as number[] };
       })();
+
+  const vec = vecOutput.results;
 
   if (vec.length > 0) {
     log.info('search:chunksSearch', 'vector results', { count: vec.length, topScores: vec.slice(0, 3).map(r => r.score) });
@@ -160,7 +162,9 @@ export async function chunksSearch(
     };
   });
 
-  const [queryVec] = await deps.embedding.embed([query]);
+  const queryVec = vecOutput.queryVector.length > 0
+    ? vecOutput.queryVector
+    : (await deps.embedding.embed([query]))[0];
   const reranked = mmrRerank(candidates, queryVec, 0.7, 5);
   log.info('search:chunksSearch', 'MMR reranked', { finalCount: reranked.length, ids: reranked.map(r => r.id) });
   return reranked;
@@ -190,21 +194,29 @@ async function vectorSearch(
   }));
 }
 
+type VectorSearchOutput = {
+  results: ChunkWithVector[];
+  queryVector: number[];
+};
+
 async function vectorSearchWithVectors(
   embedding: EmbeddingClient,
   qdrant: QdrantDAO,
   query: string,
   userId: number,
-): Promise<ChunkWithVector[]> {
+): Promise<VectorSearchOutput> {
   const [vec] = await embedding.embed([query]);
   log.info('search:vectorSearchWithVectors', 'embedding done', { dim: vec.length });
   const results = await qdrant.searchVectors(vec, userId, 20, true);
   log.info('search:vectorSearchWithVectors', 'qdrant results', { count: results.length });
-  return results.map((r) => ({
-    id: r.payload.chunk_id as number,
-    content: (r.payload.content as string) ?? '',
-    score: r.score,
-    doc_id: (r.payload.doc_id as number) ?? 0,
-    vector: r.vector as number[] | undefined,
-  }));
+  return {
+    queryVector: vec,
+    results: results.map((r) => ({
+      id: r.payload.chunk_id as number,
+      content: (r.payload.content as string) ?? '',
+      score: r.score,
+      doc_id: (r.payload.doc_id as number) ?? 0,
+      vector: r.vector as number[] | undefined,
+    })),
+  };
 }

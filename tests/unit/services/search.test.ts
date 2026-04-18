@@ -99,6 +99,7 @@ describe('chunksSearch', () => {
     const deps = makeDeps();
     const result = await chunksSearch('test query', 1, 'hybrid', deps);
 
+    expect(deps.embedding.embed).toHaveBeenCalledTimes(1);
     expect(deps.embedding.embed).toHaveBeenCalledWith(['test query']);
     expect(deps.qdrant.searchVectors).toHaveBeenCalled();
 
