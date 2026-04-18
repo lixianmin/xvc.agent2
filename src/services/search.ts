@@ -173,7 +173,7 @@ export async function chunksSearch(
 async function keywordSearch(d1: D1Database, query: string): Promise<ChunkResult[]> {
   const results = await searchFTS(d1, query);
   log.info('search:keywordSearch', 'FTS results', { count: results.length });
-  return results.map((r) => ({ id: r.id, content: r.content, score: r.score, doc_id: 0 }));
+  return results.map((r) => ({ id: r.id, content: r.content, score: r.score, doc_id: r.doc_id }));
 }
 
 async function vectorSearch(

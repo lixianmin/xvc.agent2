@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 2 Critical, 9 Important, 14 Minor. (C3, C4, C5, I2 fixed)
+Full project review — 2 Critical, 8 Important, 14 Minor. (C3, C4, C5, I2, I3 fixed)
 
 ## Critical
 
@@ -32,11 +32,7 @@ Full project review — 2 Critical, 9 Important, 14 Minor. (C3, C4, C5, I2 fixed
 
 ### ~~I2: hybrid search 重复调用 embedding~~ ✅ Fixed — vectorSearchWithVectors 返回 queryVector 复用
 
-### I3: keywordSearch 返回 doc_id: 0
-- **位置**: `src/services/search.ts:172`
-- **问题**: `searchFTS` 查询未 JOIN `doc_id`，纯 keyword 结果丢失文档关联
-- **影响**: 搜索结果不完整
-- **修复方向**: `searchFTS` SQL 加 `c.doc_id`
+### ~~I3: keywordSearch 返回 doc_id: 0~~ ✅ Fixed — searchFTS SQL 加 `c.doc_id`
 
 ### I4: tool args JSON 解析失败静默吞错
 - **位置**: `src/agent/loop.ts:260`

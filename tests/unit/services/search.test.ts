@@ -56,8 +56,8 @@ describe('reciprocalRankFusion', () => {
 
 describe('chunksSearch', () => {
   const mockFTSResults = [
-    { id: 1, content: 'hello world', score: -1.5 },
-    { id: 2, content: 'foo bar', score: -2.0 },
+    { id: 1, content: 'hello world', score: -1.5, doc_id: 10 },
+    { id: 2, content: 'foo bar', score: -2.0, doc_id: 11 },
   ];
 
   const mockVectorResults = [
@@ -90,7 +90,7 @@ describe('chunksSearch', () => {
     const result = await chunksSearch('test query', 1, 'keyword', deps);
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ id: 1, content: 'hello world', score: -1.5, doc_id: expect.any(Number) });
+    expect(result[0]).toEqual({ id: 1, content: 'hello world', score: -1.5, doc_id: 10 });
     expect(deps.qdrant.searchVectors).not.toHaveBeenCalled();
     expect(deps.embedding.embed).not.toHaveBeenCalled();
   });

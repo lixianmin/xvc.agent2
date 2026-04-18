@@ -392,6 +392,7 @@ type FTSResult = {
   id: number;
   content: string;
   score: number;
+  doc_id: number;
 };
 
 export async function searchFTS(db: D1Database, query: string, limit = 20): Promise<FTSResult[]> {
@@ -401,7 +402,7 @@ export async function searchFTS(db: D1Database, query: string, limit = 20): Prom
   const ftsQuery = terms.map((t) => `${t}*`).join(' AND ');
   const result = await db
     .prepare(
-      'SELECT c.id, c.content, bm25(chunks_fts) AS score FROM chunks_fts f JOIN chunks c ON f.rowid = c.id WHERE chunks_fts MATCH ? ORDER BY score LIMIT ?',
+      'SELECT c.id, c.content, c.doc_id, bm25(chunks_fts) AS score FROM chunks_fts f JOIN chunks c ON f.rowid = c.id WHERE chunks_fts MATCH ? ORDER BY score LIMIT ?',
     )
     .bind(ftsQuery, limit)
     .all<FTSResult>();
