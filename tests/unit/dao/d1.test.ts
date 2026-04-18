@@ -393,6 +393,9 @@ describe('Document & Chunk DAO', () => {
     expect(result).toBe(true);
     const docs = await listDocuments(db, userId);
     expect(docs.find((d) => d.id === doc.id)).toBeUndefined();
+
+    const remainingChunks = await db.prepare('SELECT COUNT(*) as cnt FROM chunks WHERE doc_id = ?').bind(doc.id).first<{ cnt: number }>();
+    expect(remainingChunks!.cnt).toBe(0);
   });
 
   it('deleteDocument returns false for non-existent', async () => {

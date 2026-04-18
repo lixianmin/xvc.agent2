@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 5 Critical, 10 Important, 14 Minor.
+Full project review — 3 Critical, 10 Important, 14 Minor. (C3, C4 fixed)
 
 ## Critical
 
@@ -16,17 +16,9 @@ Full project review — 5 Critical, 10 Important, 14 Minor.
 - **影响**: 知道 ID 即可操作他人数据
 - **修复方向**: 每个 mutation 操作前加 ownership check
 
-### C3: SSRF — web_fetch 不校验 URL
-- **位置**: `src/services/web.ts:29`
-- **问题**: `fetchUrl` 接受任意 URL，无白名单/黑名单
-- **影响**: 可访问 `http://169.254.169.254/metadata` 等内网地址，泄露云凭证
-- **修复方向**: URL 校验，阻止私有 IP 段，要求 HTTPS
+### ~~C3: SSRF~~ ✅ Fixed (a8d24fe)
 
-### C4: deleteDocument 不删 D1 chunks 表数据
-- **位置**: `src/dao/d1.ts:351-355`
-- **问题**: 只删 `chunks_fts` 和 `documents`，`chunks` 表残留孤儿数据
-- **影响**: 存储浪费，查询可能返回已删文档的 chunk
-- **修复方向**: 在 `deleteDocument` 中加 `DELETE FROM chunks WHERE doc_id = ?`
+### ~~C4: deleteDocument 不删 D1 chunks~~ ✅ Fixed
 
 ### C5: outbox 并发竞争 — process-outbox 无行级锁
 - **位置**: `src/index.ts:171-199`
