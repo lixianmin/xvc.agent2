@@ -2,6 +2,9 @@ name = "xvc-agent2"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+[limits]
+subrequest_limit = 1000
+
 [[d1_databases]]
 binding = "DB"
 database_name = "xvc-agent2"
