@@ -281,6 +281,41 @@ describe('POST /api/files/upload', () => {
     const body = await res.json();
     expect(body.error).toBeDefined();
   });
+
+  it('rejects image exceeding 10MB limit', async () => {
+    const db = env.DB as D1Database;
+    const user = await createUser(db, { email: `bigimg${Date.now()}@test.com`, name: 'BigImg' });
+    const bigContent = new Uint8Array(11 * 1024 * 1024);
+    const formData = new FormData();
+    formData.append('file', new File([bigContent], 'big.jpg', { type: 'image/jpeg' }));
+
+    const res = await app.request('/api/files/upload', {
+      method: 'POST',
+      headers: { 'X-User-Id': String(user.id) },
+      body: formData,
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Image too large');
+  });
+
+  it('rejects unsupported image format bmp', async () => {
+    const db = env.DB as D1Database;
+    const user = await createUser(db, { email: `bmp${Date.now()}@test.com`, name: 'BmpUser' });
+    const formData = new FormData();
+    formData.append('file', new File(['data'], 'photo.bmp', { type: 'image/bmp' }));
+
+    const res = await app.request('/api/files/upload', {
+      method: 'POST',
+      headers: { 'X-User-Id': String(user.id) },
+      body: formData,
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Unsupported');
+  });
 });
 
 describe('GET /api/admin/outbox-status', () => {

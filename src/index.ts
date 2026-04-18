@@ -192,11 +192,24 @@ app.post('/api/files/upload', authMiddleware, async (c) => {
     return c.json({ error: `File too large: ${file.size} bytes (max ${config.upload.maxFileSize})` }, 400);
   }
 
+  const isImage = file.type.startsWith('image/');
+  if (isImage && file.size > config.upload.maxImageSize) {
+    return c.json({ error: `Image too large: ${file.size} bytes (max ${config.upload.maxImageSize})` }, 400);
+  }
+
+  const visionClient = isImage ? new LLMClient({
+    apiKey: c.env.GLM_API_KEY,
+    baseUrl: config.vision.baseUrl,
+    model: config.vision.model,
+  }) : undefined;
+
   const doc = await processFileUpload({
     r2: c.env.FILES,
     d1: c.env.DB,
     qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
-    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),    userId: user.id,
+    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),
+    userId: user.id,
+    visionClient,
   }, file);
 
   return c.json(doc);
