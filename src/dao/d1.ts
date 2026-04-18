@@ -374,12 +374,15 @@ export async function getChunkIdsByDoc(db: D1Database, docId: number): Promise<n
   return result.results.map(r => r.id);
 }
 
-type Chunk = {
+export type Chunk = {
   id: number;
-  doc_id: number;
+  doc_id: number | null;
   seq: number;
   content: string;
   token_count: number;
+  source: string;
+  expires_at: string | null;
+  created_at: string;
 };
 
 type InsertChunkInput = {
@@ -398,6 +401,54 @@ export async function insertChunk(db: D1Database, input: InsertChunkInput): Prom
   ]);
   const id = result[0].meta.last_row_id as number;
   return db.prepare('SELECT * FROM chunks WHERE id = ?').bind(id).first<Chunk>()!;
+}
+
+export type ChatMemoryInput = {
+  userId: number;
+  content: string;
+  category: string;
+};
+
+export type UpdateChatMemoryInput = {
+  content: string;
+  category: string;
+};
+
+function getExpiresAt(category: string): string | null {
+  const fmt = (ms: number) => {
+    const d = new Date(Date.now() + ms + 8 * 3600 * 1000);
+    return d.toISOString().replace('T', ' ').replace('Z', '');
+  };
+  if (category === 'fact') return null;
+  if (category === 'preference') return fmt(180 * 86400 * 1000);
+  return fmt(7 * 86400 * 1000);
+}
+
+export async function insertChatMemory(db: D1Database, input: ChatMemoryInput): Promise<Chunk | null> {
+  const expiresAt = getExpiresAt(input.category);
+  const tokenized = tokenizeCJK(input.content);
+  const tokenCount = estimateTokens(input.content);
+  const result = await db.batch([
+    db.prepare('INSERT INTO chunks (doc_id, user_id, seq, content, token_count, source, expires_at) VALUES (NULL, ?, 0, ?, ?, ?, ?)')
+      .bind(input.userId, input.content, tokenCount, 'chat', expiresAt),
+    db.prepare('INSERT INTO chunks_fts (rowid, content) VALUES (last_insert_rowid(), ?)').bind(tokenized),
+  ]);
+  const id = result[0].meta.last_row_id as number;
+  return db.prepare('SELECT * FROM chunks WHERE id = ?').bind(id).first<Chunk>()!;
+}
+
+export async function updateChatMemory(db: D1Database, id: number, input: UpdateChatMemoryInput): Promise<boolean> {
+  const expiresAt = getExpiresAt(input.category);
+  const tokenized = tokenizeCJK(input.content);
+  const result = await db.batch([
+    db.prepare('UPDATE chunks SET content = ?, expires_at = ? WHERE id = ?')
+      .bind(input.content, expiresAt, id),
+    db.prepare('INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES(?, ?, ?)')
+      .bind('delete', id, ''),
+    db.prepare('INSERT INTO chunks_fts(rowid, content) VALUES(?, ?)')
+      .bind(id, tokenized),
+  ]);
+  return result[0].meta.changes > 0;
 }
 
 type FTSResult = {
