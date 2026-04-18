@@ -104,4 +104,28 @@ describe('LLMClient', () => {
     expect(tc.name).toBe('search');
     expect(tc.args).toEqual({ q: 'test' });
   });
+
+  it('describeImage returns text from vision API', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: '图片中的文字：你好世界' } }],
+      }),
+    });
+
+    const result = await client.describeImage('data:image/png;base64,abc123', '请提取文字');
+    expect(result).toBe('图片中的文字：你好世界');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const callBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(callBody.stream).toBe(false);
+    expect(callBody.model).toBe('test-model');
+    expect(Array.isArray(callBody.messages[0].content)).toBe(true);
+    expect(callBody.messages[0].content[0].type).toBe('image_url');
+    expect(callBody.messages[0].content[1].type).toBe('text');
+  });
+
+  it('describeImage throws on API error', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Error' });
+    await expect(client.describeImage('data:image/png;base64,abc', 'prompt')).rejects.toThrow();
+  });
 });

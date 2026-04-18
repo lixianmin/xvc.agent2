@@ -120,11 +120,42 @@ export class LLMClient {
     }
     throw lastError;
   }
+
+  async describeImage(base64DataUrl: string, prompt: string): Promise<string> {
+    const url = `${this.config.baseUrl}/chat/completions`;
+    log.info('client:describeImage', 'vision request', { model: this.config.model });
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        stream: false,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: base64DataUrl } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) throw new Error(`Vision API error: ${res.status} ${res.statusText}`);
+    const data = await res.json() as { choices: { message: { content: string } }[] };
+    log.info('client:describeImage', 'vision response received');
+    return data.choices[0].message.content;
+  }
 }
+
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
 
 export interface Message {
   role: string;
-  content: string;
+  content: string | ContentPart[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }
