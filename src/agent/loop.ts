@@ -26,7 +26,7 @@ export type AgentDeps = {
 };
 
 function sseSend(controller: ReadableStreamDefaultController, event: Record<string, unknown>) {
-  log.debug('loop:sseSend', 'send', event);
+  // log.debug('loop:sseSend', 'send', event);
   controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
 }
 
