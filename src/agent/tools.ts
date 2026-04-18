@@ -1,4 +1,4 @@
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc } from '../dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory } from '../dao/d1';
 import { serperSearch, fetchUrl } from '../services/web';
 import { chunksSearch } from '../services/search';
 import { log } from '../services/logger';
@@ -159,6 +159,33 @@ export function getToolDefinitions(): ToolDef[] {
     {
       type: 'function',
       function: {
+        name: 'memory_save',
+        description: 'Save important user information to long-term memory. Use when user shares preferences, facts, or plans worth remembering for future conversations.',
+        parameters: {
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  content: { type: 'string', description: 'Complete, pronoun-free sentence with full context' },
+                  category: { type: 'string', enum: ['preference', 'fact', 'plan'], description: 'Category: preference (habits/style), fact (identity/info), plan (intentions/schedule)' },
+                },
+                required: ['content', 'category'],
+              },
+              minItems: 1,
+              maxItems: 5,
+              description: 'Memory items to save (1-5 items)',
+            },
+          },
+          required: ['items'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
         name: 'spawn_agent',
         description: 'Spawn 1-3 sub-agents to execute tasks in parallel. Each sub-agent has isolated context and can use search/file tools. Returns results for each task.',
         parameters: {
@@ -246,6 +273,61 @@ async function do_chunks_search(args: any, deps: ToolDeps): Promise<string> {
   return JSON.stringify(results);
 }
 
+function getExpiresAt(category: string): string | null {
+  const fmt = (ms: number) => {
+    const d = new Date(Date.now() + ms + 8 * 3600 * 1000);
+    return d.toISOString().replace('T', ' ').replace('Z', '');
+  };
+  if (category === 'fact') return null;
+  if (category === 'preference') return fmt(180 * 86400 * 1000);
+  return fmt(7 * 86400 * 1000);
+}
+
+async function do_memory_save(args: any, deps: ToolDeps): Promise<string> {
+  const items: { content: string; category: string }[] = args.items;
+  if (!items || items.length === 0) return JSON.stringify({ error: 'No items to save' });
+
+  const saved = [];
+  for (const item of items) {
+    try {
+      const [vec] = await deps.embedding.embed([item.content]);
+      const existing = await deps.qdrant.searchVectors(vec, deps.userId, 3);
+      const duplicate = existing.find((r: any) => r.payload.source === 'chat' && r.score > 0.95);
+      const expiresAt = getExpiresAt(item.category);
+
+      if (duplicate) {
+        const existingId = duplicate.payload.chunk_id as number;
+        await updateChatMemory(deps.d1, existingId, { content: item.content, category: item.category });
+        await deps.qdrant.upsertVectors([{
+          id: existingId,
+          vector: vec,
+          payload: { chunk_id: existingId, user_id: deps.userId, source: 'chat', content: item.content, category: item.category, expires_at: expiresAt },
+        }]);
+        saved.push({ content: item.content, status: 'updated' });
+        continue;
+      }
+
+      const chunk = await insertChatMemory(deps.d1, {
+        userId: deps.userId,
+        content: item.content,
+        category: item.category,
+      });
+
+      await deps.qdrant.upsertVectors([{
+        id: chunk!.id,
+        vector: vec,
+        payload: { chunk_id: chunk!.id, user_id: deps.userId, source: 'chat', content: item.content, category: item.category, expires_at: expiresAt },
+      }]);
+      saved.push({ content: item.content, status: 'saved' });
+    } catch (err: any) {
+      saved.push({ content: item.content, status: 'error', error: err.message ?? String(err) });
+    }
+  }
+
+  log.info('agent:memory_save', 'saved memories', { count: saved.length, statuses: saved.map(s => s.status) });
+  return JSON.stringify(saved);
+}
+
 const handlers: Record<string, (args: any, deps: ToolDeps) => Promise<string>> = {
   task_create: do_task_create,
   task_list: do_task_list,
@@ -256,6 +338,7 @@ const handlers: Record<string, (args: any, deps: ToolDeps) => Promise<string>> =
   file_list: do_file_list,
   file_delete: do_file_delete,
   chunks_search: do_chunks_search,
+  memory_save: do_memory_save,
 };
 
 export async function dispatchTool(name: string, args: any, deps: ToolDeps): Promise<string> {

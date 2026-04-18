@@ -19,6 +19,8 @@ import {
   deleteDocument,
   insertChunk,
   searchFTS,
+  insertChatMemory,
+  updateChatMemory,
   renameDocument,
 } from '../../../src/dao/d1';
 
@@ -320,7 +322,7 @@ describe('Document & Chunk DAO', () => {
       "CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), filename TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, r2_key TEXT NOT NULL, hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
     );
     await db.exec(
-      'CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, user_id INTEGER NOT NULL, seq INTEGER NOT NULL, content TEXT NOT NULL, token_count INTEGER NOT NULL, UNIQUE(doc_id, seq));',
+      "CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE, user_id INTEGER NOT NULL, seq INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL, token_count INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'document', expires_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
     );
     await db.exec(
       "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, tokenize='porter unicode61', content='chunks', content_rowid='id');",
@@ -449,5 +451,56 @@ describe('Document & Chunk DAO', () => {
     expect(updated.id).toBe(doc.id);
 
     await deleteDocument(db, doc.id);
+  });
+
+  it('inserts a chat memory with source=chat', async () => {
+    const chunk = await insertChatMemory(db, {
+      userId,
+      content: '用户偏好用中文交流',
+      category: 'preference',
+    });
+    expect(chunk).toBeTruthy();
+    expect(chunk!.source).toBe('chat');
+    expect(chunk!.doc_id).toBeNull();
+    expect(chunk!.content).toBe('用户偏好用中文交流');
+    expect(chunk!.expires_at).toBeTruthy();
+  });
+
+  it('inserts a fact memory with no expiration', async () => {
+    const chunk = await insertChatMemory(db, {
+      userId,
+      content: '用户名叫小明',
+      category: 'fact',
+    });
+    expect(chunk!.expires_at).toBeNull();
+  });
+
+  it('updates chat memory content and refreshes expiration', async () => {
+    const chunk = await insertChatMemory(db, {
+      userId,
+      content: '用户喜欢 Python',
+      category: 'preference',
+    });
+    const updated = await updateChatMemory(db, chunk!.id, {
+      content: '用户喜欢 TypeScript',
+      category: 'fact',
+    });
+    expect(updated).toBeTruthy();
+    const row = await db.prepare('SELECT content, source, expires_at FROM chunks WHERE id = ?').bind(chunk!.id).first<any>();
+    expect(row.content).toBe('用户喜欢 TypeScript');
+    expect(row.expires_at).toBeNull();
+  });
+
+  it('searchFTS excludes expired chat memories', async () => {
+    await insertChatMemory(db, { userId, content: '过期记忆关键词唯一标识xyz999', category: 'plan' });
+    await db.prepare("UPDATE chunks SET expires_at = datetime('now', '+8 hours', '-1 day') WHERE source = 'chat'").run();
+    const results = await searchFTS(db, '过期记忆关键词唯一标识xyz999', 10);
+    expect(results.length).toBe(0);
+  });
+
+  it('searchFTS includes non-expired chat memories', async () => {
+    await insertChatMemory(db, { userId, content: '有效记忆关键词唯一标识abc888', category: 'fact' });
+    const results = await searchFTS(db, '有效记忆关键词唯一标识abc888', 10);
+    expect(results.length).toBeGreaterThanOrEqual(1);
   });
 });

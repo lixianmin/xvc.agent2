@@ -69,9 +69,32 @@ export class QdrantDAO {
 
   async searchVectors(query: number[], userId: number, limit: number, withVector = false): Promise<SearchResult[]> {
     await this.ensureCollection();
+    const now = new Date(Date.now() + 8 * 3600 * 1000).toISOString().replace('T', ' ').replace('Z', '');
     const body: Record<string, unknown> = {
       vector: query,
-      filter: { must: [{ key: 'user_id', match: { value: userId } }] },
+      filter: {
+        must: [
+          { key: 'user_id', match: { value: userId } },
+          {
+            should: [
+              { is_empty: { key: 'source' } },
+              { key: 'source', match: { value: 'document' } },
+              {
+                must: [
+                  { key: 'source', match: { value: 'chat' } },
+                  { is_empty: { key: 'expires_at' } },
+                ],
+              },
+              {
+                must: [
+                  { key: 'source', match: { value: 'chat' } },
+                  { key: 'expires_at', range: { gt: now } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
       limit,
       with_payload: true,
     };
