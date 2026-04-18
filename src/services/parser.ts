@@ -39,7 +39,13 @@ export async function parseFile(
     if (!options?.visionClient) {
       throw new Error(`Image parsing requires a vision client: ${filename}`);
     }
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    const uint8 = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8.length; i += chunkSize) {
+      binary += String.fromCharCode(...uint8.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
     const dataUrl = `data:${mimeType};base64,${base64}`;
     log.info('parser:image', 'vision OCR start', { filename, size: buffer.byteLength });
     const text = await options.visionClient.describeImage(dataUrl,

@@ -51,6 +51,7 @@ export async function processFileUpload(
       tokenCount: chunk.tokenCount,
     });
 
+    if (!saved) throw new Error(`Failed to insert chunk seq=${chunk.seq} for doc ${doc.id}`);
     const event = await createEvent(deps.d1, {
       eventType: 'embed_chunk',
       chunkId: saved.id,

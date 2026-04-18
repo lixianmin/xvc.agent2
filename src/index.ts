@@ -87,8 +87,10 @@ app.get('/api/user', authMiddleware, async (c) => {
 
 app.post('/api/user/update', authMiddleware, async (c) => {
   const { id, ...fields } = await c.req.json();
-  const user = await updateUser(c.env.DB, id, fields);
-  return c.json(user);
+  const user = c.get('user');
+  if (id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const updated = await updateUser(c.env.DB, id, fields);
+  return c.json(updated);
 });
 
 app.get('/api/threads/list', authMiddleware, async (c) => {

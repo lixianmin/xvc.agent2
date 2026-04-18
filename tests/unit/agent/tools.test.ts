@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getToolDefinitions, getSubAgentToolDefinitions, dispatchTool } from '../../../src/agent/tools';
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory } from '../../../src/dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory, getExpiresAt } from '../../../src/dao/d1';
 import { serperSearch, fetchUrl } from '../../../src/services/web';
 import { chunksSearch } from '../../../src/services/search';
 
@@ -14,6 +14,7 @@ vi.mock('../../../src/dao/d1', () => ({
   getChunkIdsByDoc: vi.fn().mockResolvedValue([]),
   insertChatMemory: vi.fn(),
   updateChatMemory: vi.fn(),
+  getExpiresAt: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock('../../../src/services/web', () => ({

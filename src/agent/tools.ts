@@ -1,4 +1,4 @@
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory } from '../dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory, getExpiresAt } from '../dao/d1';
 import { serperSearch, fetchUrl } from '../services/web';
 import { chunksSearch } from '../services/search';
 import { log } from '../services/logger';
@@ -273,16 +273,6 @@ async function do_chunks_search(args: any, deps: ToolDeps): Promise<string> {
   return JSON.stringify(results);
 }
 
-function getExpiresAt(category: string): string | null {
-  const fmt = (ms: number) => {
-    const d = new Date(Date.now() + ms + 8 * 3600 * 1000);
-    return d.toISOString().replace('T', ' ').replace('Z', '');
-  };
-  if (category === 'fact') return null;
-  if (category === 'preference') return fmt(180 * 86400 * 1000);
-  return fmt(7 * 86400 * 1000);
-}
-
 async function do_memory_save(args: any, deps: ToolDeps): Promise<string> {
   const items: { content: string; category: string }[] = args.items;
   if (!items || items.length === 0) return JSON.stringify({ error: 'No items to save' });
@@ -292,7 +282,7 @@ async function do_memory_save(args: any, deps: ToolDeps): Promise<string> {
     try {
       const [vec] = await deps.embedding.embed([item.content]);
       const existing = await deps.qdrant.searchVectors(vec, deps.userId, 3);
-      const duplicate = existing.find((r: any) => r.payload.source === 'chat' && r.score > 0.95);
+      const duplicate = existing.find((r: any) => r.payload.source === 'chat' && r.score > 0.85);
       const expiresAt = getExpiresAt(item.category);
 
       if (duplicate) {

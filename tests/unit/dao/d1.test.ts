@@ -498,6 +498,27 @@ describe('Document & Chunk DAO', () => {
     expect(results.length).toBe(0);
   });
 
+  it('searchFTS filters by user_id', async () => {
+    const userA = await createUser(db, { email: 'ftsa@example.com', name: 'A' });
+    const userB = await createUser(db, { email: 'ftsb@example.com', name: 'B' });
+    const docA = await createDocument(db, {
+      userId: userA.id, filename: 'a.txt', mimeType: 'text/plain',
+      size: 10, r2Key: 'a', hash: 'ftsa',
+    });
+    const docB = await createDocument(db, {
+      userId: userB.id, filename: 'b.txt', mimeType: 'text/plain',
+      size: 10, r2Key: 'b', hash: 'ftsb',
+    });
+    await insertChunk(db, { docId: docA.id, userId: userA.id, seq: 1, content: '唯一搜索词麒麟甲', tokenCount: 5 });
+    await insertChunk(db, { docId: docB.id, userId: userB.id, seq: 1, content: '唯一搜索词麒麟乙', tokenCount: 5 });
+
+    const resultsA = await searchFTS(db, '麒麟', 10, userA.id);
+    expect(resultsA.every(r => r.doc_id === docA.id)).toBe(true);
+
+    const resultsB = await searchFTS(db, '麒麟', 10, userB.id);
+    expect(resultsB.every(r => r.doc_id === docB.id)).toBe(true);
+  });
+
   it('searchFTS includes non-expired chat memories', async () => {
     await insertChatMemory(db, { userId, content: '有效记忆关键词唯一标识abc888', category: 'fact' });
     const results = await searchFTS(db, '有效记忆关键词唯一标识abc888', 10);

@@ -43,16 +43,6 @@ export const config = {
   upload: {
     maxFileSize: 20 * 1024 * 1024,
     maxImageSize: 10 * 1024 * 1024,
-    allowedMimeTypes: [
-      'text/plain',
-      'text/markdown',
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ],
     allowedExtensions: ['txt', 'md', 'pdf', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp'],
   },
 };

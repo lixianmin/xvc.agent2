@@ -372,13 +372,13 @@ function updateDisplayedNames() {
     const aiName = state.aiNickname || 'AI';
 
     document.querySelectorAll('[data-role="user-avatar"]').forEach(el => {
-        el.textContent = userName[0].toUpperCase();
+        el.textContent = (userName[0] || 'U').toUpperCase();
     });
     document.querySelectorAll('[data-role="user-name"]').forEach(el => {
         el.textContent = userName;
     });
     document.querySelectorAll('[data-role="ai-avatar"]').forEach(el => {
-        el.textContent = aiName[0].toUpperCase();
+        el.textContent = (aiName[0] || 'A').toUpperCase();
     });
     document.querySelectorAll('[data-role="ai-name"]').forEach(el => {
         el.textContent = aiName;
@@ -598,9 +598,9 @@ function renderFiles(files) {
         const isImage = file.mime_type && file.mime_type.startsWith('image/');
         const item = document.createElement('div');
         item.className = 'file-item';
-        const dlUrl = `/api/files/download?id=${file.id}&userId=${state.userId}`;
+        const dlUrl = `/api/files/download?id=${file.id}`;
         const descHtml = file.description ? `<div class="file-desc">${escapeHtml(file.description)}</div>` : '';
-        const imgHtml = isImage ? `<img class="file-thumb" src="${dlUrl}" alt="${escapeHtml(file.filename)}" loading="lazy">` : '';
+        const imgHtml = isImage ? `<img class="file-thumb" data-file-id="${file.id}" alt="${escapeHtml(file.filename)}" loading="lazy">` : '';
         item.innerHTML = `
             ${imgHtml}
             <span class="file-icon">${getFileIcon(file.mime_type)}</span>
@@ -610,26 +610,58 @@ function renderFiles(files) {
                 <div class="file-meta">${formatSize(file.size)} &middot; ${escapeHtml(file.created_at || '')}</div>
             </div>
             <div class="file-actions">
-                <a class="file-download" href="${dlUrl}" download="${escapeHtml(file.filename)}" title="Download" aria-label="Download file">&#x2913;</a>
+                <button class="file-download" title="Download" aria-label="Download file">&#x2913;</button>
                 <button class="file-delete" title="Delete" aria-label="Delete file">&times;</button>
             </div>
         `;
         if (isImage) {
             const thumb = item.querySelector('.file-thumb');
+            fetch(`/api/files/download?id=${file.id}`, { headers: { 'X-User-Id': String(state.userId) } })
+                .then(r => r.ok ? r.blob() : Promise.reject())
+                .then(blob => { thumb.src = URL.createObjectURL(blob); })
+                .catch(() => {});
             thumb.addEventListener('click', (e) => { e.preventDefault(); showImagePreview(file); });
         }
         item.querySelector('.file-delete').addEventListener('click', () => removeFile(file.id));
+        item.querySelector('.file-download').addEventListener('click', () => downloadFile(file));
         list.appendChild(item);
     });
 }
 
+function downloadFile(file) {
+    fetch(`/api/files/download?id=${file.id}`, {
+        headers: { 'X-User-Id': String(state.userId) },
+    }).then(res => {
+        if (!res.ok) throw new Error('Download failed');
+        return res.blob();
+    }).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }).catch(err => showError(err.message));
+}
+
 function showImagePreview(file) {
-    const dlUrl = `/api/files/download?id=${file.id}&userId=${state.userId}`;
     const overlay = document.createElement('div');
     overlay.className = 'image-preview-overlay';
-    overlay.innerHTML = `<div class="image-preview-container"><img src="${dlUrl}" alt="${escapeHtml(file.filename)}"><button class="image-preview-close">&times;</button></div>`;
+    overlay.innerHTML = `<div class="image-preview-container"><div class="image-preview-loading">Loading...</div><button class="image-preview-close">&times;</button></div>`;
     overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.classList.contains('image-preview-close')) overlay.remove(); });
     document.body.appendChild(overlay);
+    const container = overlay.querySelector('.image-preview-container');
+    fetch(`/api/files/download?id=${file.id}`, {
+        headers: { 'X-User-Id': String(state.userId) },
+    }).then(res => {
+        if (!res.ok) throw new Error('Failed to load image');
+        return res.blob();
+    }).then(blob => {
+        const url = URL.createObjectURL(blob);
+        container.innerHTML = `<img src="${url}" alt="${escapeHtml(file.filename)}"><button class="image-preview-close">&times;</button>`;
+    }).catch(() => {
+        container.innerHTML = `<p>Failed to load image</p><button class="image-preview-close">&times;</button>`;
+    });
 }
 
 async function uploadFiles(fileList) {

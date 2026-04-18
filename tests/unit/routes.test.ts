@@ -451,6 +451,32 @@ describe('Authorization: ownership checks', () => {
 
     expect(res.status).toBe(200);
   });
+
+  it('user/update rejects if updating another user', async () => {
+    const { userA, userB } = await setupTwoUsers();
+
+    const res = await app.request('/api/user/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: userA.id, name: 'Hacked' }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('user/update succeeds for own user', async () => {
+    const { userA } = await setupTwoUsers();
+
+    const res = await app.request('/api/user/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userA.id) },
+      body: JSON.stringify({ id: userA.id, name: 'NewName' }),
+    }, testEnv());
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe('NewName');
+  });
 });
 
 describe('POST /api/files/rename', () => {

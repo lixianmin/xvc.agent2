@@ -107,7 +107,7 @@ export async function chunksSearch(
   },
 ): Promise<ChunkResult[]> {
   if (mode === 'keyword') {
-    return keywordSearch(deps.d1, query);
+    return keywordSearch(deps.d1, query, userId);
   }
 
   if (mode === 'vector') {
@@ -117,7 +117,7 @@ export async function chunksSearch(
   log.info('search:chunksSearch', 'hybrid search started', { query: query.slice(0, 200), userId, mode });
 
   const [ftsResults, vectorResults] = await Promise.allSettled([
-    keywordSearch(deps.d1, query),
+    keywordSearch(deps.d1, query, userId),
     vectorSearchWithVectors(deps.embedding, deps.qdrant, query, userId),
   ]);
 
@@ -171,8 +171,8 @@ export async function chunksSearch(
   return reranked;
 }
 
-async function keywordSearch(d1: D1Database, query: string): Promise<ChunkResult[]> {
-  const results = await searchFTS(d1, query);
+async function keywordSearch(d1: D1Database, query: string, userId: number): Promise<ChunkResult[]> {
+  const results = await searchFTS(d1, query, undefined, userId);
   log.info('search:keywordSearch', 'FTS results', { count: results.length });
   return results.map((r) => ({ id: r.id, content: r.content, score: r.score, doc_id: r.doc_id }));
 }
