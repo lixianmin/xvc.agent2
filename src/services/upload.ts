@@ -6,6 +6,7 @@ import type { Document } from '../dao/d1';
 import { createEvent, markCompleted } from '../dao/outbox';
 import type { QdrantDAO } from '../dao/qdrant';
 import type { EmbeddingClient } from '../llm/embedding';
+import type { LLMClient } from '../llm/client';
 
 export async function processFileUpload(
   deps: {
@@ -14,6 +15,7 @@ export async function processFileUpload(
     qdrant: QdrantDAO;
     embedding: EmbeddingClient;
     userId: number;
+    visionClient?: LLMClient;
   },
   file: File,
 ): Promise<Document> {
@@ -33,7 +35,7 @@ export async function processFileUpload(
     hash,
   });
 
-  const rawText = await parseFile(buffer, file.type, file.name);
+  const rawText = await parseFile(buffer, file.type, file.name, { visionClient: deps.visionClient });
   const text = cleanText(rawText);
   const chunks = chunkText(text);
 
