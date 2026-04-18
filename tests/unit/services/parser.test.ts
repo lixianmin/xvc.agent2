@@ -41,7 +41,7 @@ describe('parseFile', () => {
   it('throws error for unsupported file extension', async () => {
     const parseFile = await getParseFile();
     const buffer = new ArrayBuffer(0);
-    await expect(parseFile(buffer, 'image/png', 'photo.png')).rejects.toThrow(
+    await expect(parseFile(buffer, 'image/bmp', 'photo.bmp')).rejects.toThrow(
       /unsupported/i,
     );
   });
@@ -80,6 +80,30 @@ describe('parseFile', () => {
 
       vi.doUnmock('mammoth');
       vi.resetModules();
+    });
+  });
+
+  describe('Image parsing', () => {
+    it('calls visionClient.describeImage for image files', async () => {
+      const mockClient = {
+        describeImage: vi.fn().mockResolvedValue('OCR text from image'),
+      } as any;
+
+      vi.resetModules();
+      const { parseFile } = await import('../../../src/services/parser');
+      const buffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
+
+      const result = await parseFile(buffer, 'image/png', 'photo.png', { visionClient: mockClient });
+      expect(result).toBe('OCR text from image');
+      expect(mockClient.describeImage).toHaveBeenCalledTimes(1);
+      expect(mockClient.describeImage.mock.calls[0][0]).toContain('data:image/png;base64,');
+    });
+
+    it('throws if image file has no visionClient', async () => {
+      vi.resetModules();
+      const { parseFile } = await import('../../../src/services/parser');
+      const buffer = new ArrayBuffer(4);
+      await expect(parseFile(buffer, 'image/png', 'photo.png')).rejects.toThrow(/vision/i);
     });
   });
 });
