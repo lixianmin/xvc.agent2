@@ -1,4 +1,5 @@
 import { tokenizeCJK } from '../services/cjk';
+import { estimateTokens } from '../services/chunker';
 
 type CreateUserInput = {
   email: string;
@@ -210,10 +211,6 @@ export async function saveMessage(db: D1Database, input: SaveMessageInput): Prom
   return db.prepare('SELECT * FROM messages WHERE id = ?').bind(id).first<Message>()!;
 }
 
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
 type ToolCallInfo = { id: string };
 
 function getToolCallIds(msg: Message): Set<string> {
@@ -263,7 +260,8 @@ export async function loadMessages(db: D1Database, threadId: number, tokenBudget
     selected.push(messages[lastUserIdx]);
   }
 
-  selected.sort((a, b) => messages.indexOf(a) - messages.indexOf(b));
+  const idxMap = new Map(messages.map((m, i) => [m.id, i]));
+  selected.sort((a, b) => (idxMap.get(a.id) ?? 0) - (idxMap.get(b.id) ?? 0));
   return selected;
 }
 
@@ -311,7 +309,7 @@ function buildMessageGroups(messages: Message[]): MessageGroup[] {
   return groups;
 }
 
-type Document = {
+export type Document = {
   id: number;
   user_id: number;
   filename: string;
@@ -331,7 +329,7 @@ type CreateDocumentInput = {
   hash: string;
 };
 
-export async function createDocument(db: D1Database, input: CreateDocumentInput): Promise<Document|null> {
+export async function createDocument(db: D1Database, input: CreateDocumentInput): Promise<Document> {
   const result = await db
     .prepare('INSERT INTO documents (user_id, filename, mime_type, size, r2_key, hash) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(input.userId, input.filename, input.mimeType, input.size, input.r2Key, input.hash)

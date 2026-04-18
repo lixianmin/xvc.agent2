@@ -1,6 +1,7 @@
 import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc } from '../dao/d1';
 import { serperSearch, fetchUrl } from '../services/web';
 import { chunksSearch } from '../services/search';
+import { log } from '../services/logger';
 
 export type ToolDef = {
   type: 'function';
@@ -258,7 +259,7 @@ const handlers: Record<string, (args: any, deps: ToolDeps) => Promise<string>> =
 };
 
 export async function dispatchTool(name: string, args: any, deps: ToolDeps): Promise<string> {
-  console.log(`[agent] tool_call: name=${name}, args=${JSON.stringify(args)}`);
+  log.info('agent:dispatchTool', 'tool call', { name, args });
 
   const handler = handlers[name];
   if (!handler) {

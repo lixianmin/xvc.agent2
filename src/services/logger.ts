@@ -1,9 +1,7 @@
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 function ts(): string {
-  const d = new Date(Date.now() + 8 * 3600 * 1000);
-  const iso = d.toISOString();
-  return iso.replace('T', ' ').replace('Z', '');
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' });
 }
 
 const LEVEL_PAD: Record<LogLevel, string> = {

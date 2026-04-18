@@ -324,6 +324,9 @@ describe('Document & Chunk DAO', () => {
     await db.exec(
       "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, tokenize='porter unicode61', content='chunks', content_rowid='id');",
     );
+    await db.exec(
+      "CREATE TRIGGER IF NOT EXISTS chunks_fts_ad AFTER DELETE ON chunks BEGIN INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.id, old.content); END;",
+    );
     const user = await createUser(db, { email: 'docuser@example.com', name: 'DocUser' });
     userId = user.id;
   });
@@ -396,6 +399,34 @@ describe('Document & Chunk DAO', () => {
 
     const remainingChunks = await db.prepare('SELECT COUNT(*) as cnt FROM chunks WHERE doc_id = ?').bind(doc.id).first<{ cnt: number }>();
     expect(remainingChunks!.cnt).toBe(0);
+  });
+
+  it('FTS trigger removes index when chunk is directly deleted', async () => {
+    const doc = await createDocument(db, {
+      userId,
+      filename: 'trigger-test.pdf',
+      mimeType: 'application/pdf',
+      size: 256,
+      r2Key: 'uploads/trigger.pdf',
+      hash: 'trigger789',
+    });
+    const chunk = await insertChunk(db, {
+      docId: doc.id,
+      userId,
+      seq: 1,
+      content: '触发器测试内容搜索关键词',
+      tokenCount: 10,
+    });
+
+    const beforeDelete = await searchFTS(db, '触发器测试', 10);
+    expect(beforeDelete.length).toBeGreaterThanOrEqual(1);
+
+    await db.prepare('DELETE FROM chunks WHERE id = ?').bind(chunk.id).run();
+
+    const afterDelete = await searchFTS(db, '触发器测试', 10);
+    expect(afterDelete.find((r) => r.id === chunk.id)).toBeUndefined();
+
+    await deleteDocument(db, doc.id);
   });
 
   it('deleteDocument returns false for non-existent', async () => {

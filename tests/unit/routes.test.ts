@@ -62,6 +62,7 @@ beforeAll(async () => {
   await db.exec("CREATE TABLE IF NOT EXISTS outbox_events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL CHECK (event_type IN ('embed_chunk', 'delete_vector')), chunk_id INTEGER NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')), updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));");
   await db.exec('CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE, user_id INTEGER NOT NULL, seq INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL, token_count INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT \'document\', expires_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime(\'now\', \'+8 hours\')));');
   await db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, tokenize='porter unicode61', content='chunks', content_rowid='id');");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS chunks_fts_ad AFTER DELETE ON chunks BEGIN INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.id, old.content); END;");
 
   const mod = await import('../../../src/index');
   app = mod.default;
@@ -226,6 +227,59 @@ describe('POST /api/files/upload', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.filename).toBeDefined();
+  });
+
+  it('rejects unsupported file type', async () => {
+    const db = env.DB as D1Database;
+    const user = await createUser(db, { email: 'upload-bad-ext@test.com', name: 'BadExt' });
+
+    const formData = new FormData();
+    formData.append('file', new File(['<html></html>'], 'evil.exe', { type: 'application/x-msdownload' }));
+
+    const res = await app.request('/api/files/upload', {
+      method: 'POST',
+      headers: { 'X-User-Id': String(user.id) },
+      body: formData,
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Unsupported');
+  });
+
+  it('rejects file exceeding size limit', async () => {
+    const db = env.DB as D1Database;
+    const user = await createUser(db, { email: 'upload-big@test.com', name: 'BigFile' });
+
+    const bigContent = new Uint8Array(21 * 1024 * 1024);
+    const formData = new FormData();
+    formData.append('file', new File([bigContent], 'big.pdf', { type: 'application/pdf' }));
+
+    const res = await app.request('/api/files/upload', {
+      method: 'POST',
+      headers: { 'X-User-Id': String(user.id) },
+      body: formData,
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('too large');
+  });
+
+  it('rejects missing file', async () => {
+    const db = env.DB as D1Database;
+    const user = await createUser(db, { email: 'upload-nofile@test.com', name: 'NoFile' });
+
+    const formData = new FormData();
+    const res = await app.request('/api/files/upload', {
+      method: 'POST',
+      headers: { 'X-User-Id': String(user.id) },
+      body: formData,
+    }, testEnv());
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBeDefined();
   });
 });
 

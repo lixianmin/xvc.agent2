@@ -28,4 +28,14 @@ export const config = {
     vectorSize: 1024,
     distance: 'Cosine' as const,
   },
+  upload: {
+    maxFileSize: 20 * 1024 * 1024,
+    allowedMimeTypes: [
+      'text/plain',
+      'text/markdown',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ],
+    allowedExtensions: ['txt', 'md', 'pdf', 'docx'],
+  },
 };

@@ -4,9 +4,11 @@ export type SearchResult = {
   snippet: string;
 };
 
+import { config } from '../config';
+
 const SERPER_URL = 'https://google.serper.dev/search';
-const FETCH_TIMEOUT_MS = 10_000;
-const MAX_RESPONSE_BYTES = 1_024 * 1024;
+const FETCH_TIMEOUT_MS = config.web.fetchTimeoutMs;
+const MAX_RESPONSE_BYTES = config.web.maxResponseBytes;
 
 export async function serperSearch(query: string, apiKey: string): Promise<SearchResult[]> {
   const res = await fetch(SERPER_URL, {

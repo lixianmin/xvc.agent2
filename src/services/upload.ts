@@ -2,20 +2,10 @@ import { parseFile } from './parser';
 import { cleanText } from './cleaner';
 import { chunkText } from './chunker';
 import { createDocument, insertChunk } from '../dao/d1';
+import type { Document } from '../dao/d1';
 import { createEvent, markCompleted } from '../dao/outbox';
 import type { QdrantDAO } from '../dao/qdrant';
 import type { EmbeddingClient } from '../llm/embedding';
-
-type Document = {
-  id: number;
-  user_id: number;
-  filename: string;
-  mime_type: string;
-  size: number;
-  r2_key: string;
-  hash: string;
-  created_at: string;
-};
 
 export async function processFileUpload(
   deps: {

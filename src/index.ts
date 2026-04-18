@@ -8,6 +8,7 @@ import { QdrantDAO } from './dao/qdrant';
 import { AgentLoop } from './agent/loop';
 import { authMiddleware } from './middleware/auth';
 import { processFileUpload } from './services/upload';
+import { config } from './config';
 import { log } from './services/logger';
 
 type Bindings = {
@@ -29,6 +30,14 @@ type Variables = {
 type Env = { Bindings: Bindings; Variables: Variables };
 
 const app = new Hono<Env>();
+
+app.use('*', async (c, next) => {
+  await next();
+  if (c.res.headers.get('Content-Type')?.startsWith('text/html')) {
+    c.res.headers.set('Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'");
+  }
+});
 
 function parseId(raw: string | null | undefined): number | null {
   if (!raw) return null;
@@ -147,7 +156,20 @@ app.post('/api/tasks/delete', authMiddleware, async (c) => {
 app.post('/api/files/upload', authMiddleware, async (c) => {
   const user = c.get('user');
   const formData = await c.req.formData();
-  const file = formData.get('file') as File;
+  const file = formData.get('file');
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: 'No file provided' }, 400);
+  }
+
+  const ext = file.name.toLowerCase().split('.').pop() ?? '';
+  if (!config.upload.allowedExtensions.includes(ext)) {
+    return c.json({ error: `Unsupported file type: .${ext}` }, 400);
+  }
+
+  if (file.size > config.upload.maxFileSize) {
+    return c.json({ error: `File too large: ${file.size} bytes (max ${config.upload.maxFileSize})` }, 400);
+  }
 
   const doc = await processFileUpload({
     r2: c.env.FILES,

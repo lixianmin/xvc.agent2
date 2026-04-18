@@ -1,4 +1,4 @@
-import type { ToolDef } from '../llm/client';
+import type { ToolDef } from './tools';
 
 export function buildSystemPrompt(params: {
   tools: ToolDef[];

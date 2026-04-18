@@ -2,6 +2,7 @@ import { searchFTS } from '../dao/d1';
 import { QdrantDAO } from '../dao/qdrant';
 import { EmbeddingClient } from '../llm/embedding';
 import { log } from './logger';
+import { config } from '../config';
 
 type SearchCandidate = { id: number | string };
 type ScoredCandidate = { id: number | string; score: number };
@@ -9,7 +10,7 @@ type ScoredCandidate = { id: number | string; score: number };
 export function reciprocalRankFusion(
   lists: SearchCandidate[][],
   weights: number[],
-  k = 60,
+  k = config.search.rrfK,
 ): ScoredCandidate[] {
   const scores = new Map<number | string, number>();
 
@@ -47,8 +48,8 @@ function cosineSim(a: number[], b: number[]): number {
 export function mmrRerank(
   candidates: ChunkWithVector[],
   queryVector: number[],
-  lambda = 0.7,
-  topK = 5,
+  lambda = config.search.mmrLambda,
+  topK = config.search.mmrTopK,
 ): ChunkResult[] {
   if (candidates.length <= topK) return candidates;
 
@@ -165,7 +166,7 @@ export async function chunksSearch(
   const queryVec = vecOutput.queryVector.length > 0
     ? vecOutput.queryVector
     : (await deps.embedding.embed([query]))[0];
-  const reranked = mmrRerank(candidates, queryVec, 0.7, 5);
+  const reranked = mmrRerank(candidates, queryVec, config.search.mmrLambda, config.search.mmrTopK);
   log.info('search:chunksSearch', 'MMR reranked', { finalCount: reranked.length, ids: reranked.map(r => r.id) });
   return reranked;
 }
@@ -184,7 +185,7 @@ async function vectorSearch(
 ): Promise<ChunkResult[]> {
   const [vec] = await embedding.embed([query]);
   log.info('search:vectorSearch', 'embedding done', { dim: vec.length });
-  const results = await qdrant.searchVectors(vec, userId, 20);
+  const results = await qdrant.searchVectors(vec, userId, config.search.vectorLimit);
   log.info('search:vectorSearch', 'qdrant results', { count: results.length });
   return results.map((r) => ({
     id: r.payload.chunk_id as number,
@@ -207,7 +208,7 @@ async function vectorSearchWithVectors(
 ): Promise<VectorSearchOutput> {
   const [vec] = await embedding.embed([query]);
   log.info('search:vectorSearchWithVectors', 'embedding done', { dim: vec.length });
-  const results = await qdrant.searchVectors(vec, userId, 20, true);
+  const results = await qdrant.searchVectors(vec, userId, config.search.vectorLimit, true);
   log.info('search:vectorSearchWithVectors', 'qdrant results', { count: results.length });
   return {
     queryVector: vec,

@@ -15,10 +15,12 @@ type CodeFenceRegion = {
   end: number;
 };
 
-const TARGET_TOKENS = 500;
-const OVERLAP_TOKENS = 75;
-const WINDOW_TOKENS = 100;
-const CHARS_PER_TOKEN = 4;
+import { config } from '../config';
+
+const TARGET_TOKENS = config.chunker.targetTokens;
+const OVERLAP_TOKENS = config.chunker.overlapTokens;
+const WINDOW_TOKENS = config.chunker.windowTokens;
+const CHARS_PER_TOKEN = config.chunker.charsPerToken;
 
 const TARGET_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN;
 const OVERLAP_CHARS = OVERLAP_TOKENS * CHARS_PER_TOKEN;
@@ -34,7 +36,7 @@ const BREAK_PATTERNS: [RegExp, number, string][] = [
   [/\n/g, 1, 'newline'],
 ];
 
-function estimateTokens(text: string): number {
+export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 

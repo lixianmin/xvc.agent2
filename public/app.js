@@ -15,9 +15,7 @@ const state = {
 const $ = (sel) => document.querySelector(sel);
 
 function escapeHtml(text) {
-    const d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 async function api(method, path, body = null) {
@@ -325,7 +323,7 @@ function appendUserMessage(content) {
     const div = document.createElement('div');
     div.className = 'message user';
     const userName = state.userName || 'User';
-    const initial = userName[0].toUpperCase();
+    const initial = (userName[0] || 'U').toUpperCase();
     div.innerHTML = `
         <div class="message-avatar-wrap">
             <div class="message-avatar" data-role="user-avatar">${escapeHtml(initial)}</div>
@@ -343,7 +341,7 @@ function appendAssistantMessage(content) {
     const div = document.createElement('div');
     div.className = 'message assistant';
     const aiName = state.aiNickname || 'AI';
-    const avatar = aiName[0].toUpperCase();
+    const avatar = (aiName[0] || 'A').toUpperCase();
     div.innerHTML = `
         <div class="message-avatar-wrap">
             <div class="message-avatar" data-role="ai-avatar">${escapeHtml(avatar)}</div>
@@ -563,7 +561,7 @@ async function sendMessage() {
                             appendStatusMessage(event.content);
                             break;
                     }
-                } catch {}
+                } catch (e) { console.warn('SSE parse error:', e, data); }
             }
         }
     } catch (err) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildSystemPrompt } from '../../../src/agent/prompt';
-import type { ToolDef } from '../../../src/llm/client';
+import type { ToolDef } from '../../../src/agent/tools';
 
 const sampleTools: ToolDef[] = [
   {
