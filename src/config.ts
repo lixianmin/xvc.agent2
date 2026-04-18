@@ -4,7 +4,7 @@ export const config = {
     baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
   },
   vision: {
-    model: 'glm-5v-turbo',
+    model: 'glm-4.6v',
     baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
   },
   embedding: {
