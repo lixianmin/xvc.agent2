@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 2 Critical, 6 Important, 14 Minor. (C3, C4, C5, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M13, M14 fixed)
+Full project review — 2 Critical, 6 Important, 14 Minor. (C2, C3, C4, C5, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M13, M14 fixed)
 
 ## Critical
 
@@ -10,11 +10,7 @@ Full project review — 2 Critical, 6 Important, 14 Minor. (C3, C4, C5, I1, I2, 
 - **影响**: 所有用户数据可被任意访问/篡改，生产部署阻塞项
 - **修复方向**: JWT / Cloudflare Access headers / session token
 
-### C2: 无授权检查 — mutation 路由不验证数据所属用户
-- **位置**: `src/index.ts` 各 POST 路由 (deleteThread, updateThreadTitle, deleteTask, deleteDocument 等)
-- **问题**: 只检查用户身份，不验证目标资源属于该用户
-- **影响**: 知道 ID 即可操作他人数据
-- **修复方向**: 每个 mutation 操作前加 ownership check
+### ~~C2: 无授权检查 — mutation 路由不验证数据所属用户~~ ✅ Fixed — `createOwnershipCheck` 中间件工厂 + 各路由注册
 
 ### ~~C3: SSRF~~ ✅ Fixed (a8d24fe)
 

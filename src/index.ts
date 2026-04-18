@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, createDocument, listDocuments, deleteDocument } from './dao/d1';
+import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, getTaskOwnerId, createDocument, listDocuments, deleteDocument, getDocumentOwnerId, getThreadOwnerId } from './dao/d1';
 import { createEvent, markCompleted, markFailed, getPendingEvents, claimEvent } from './dao/outbox';
 import { LLMClient } from './llm/client';
 import { EmbeddingClient } from './llm/embedding';
 import { QdrantDAO } from './dao/qdrant';
 import { AgentLoop } from './agent/loop';
 import { authMiddleware } from './middleware/auth';
+import { createOwnershipCheck } from './middleware/ownership';
 import { processFileUpload } from './services/upload';
 import { config } from './config';
 import { log } from './services/logger';
@@ -44,6 +45,26 @@ function parseId(raw: string | null | undefined): number | null {
   const n = parseInt(raw, 10);
   return Number.isNaN(n) ? null : n;
 }
+
+const ownThreadByQuery = createOwnershipCheck(
+  (c) => parseId(c.req.query('id')),
+  getThreadOwnerId,
+);
+
+const ownThreadByBody = createOwnershipCheck(
+  async (c) => (await c.req.json()).id ?? null,
+  getThreadOwnerId,
+);
+
+const ownTaskByBody = createOwnershipCheck(
+  async (c) => (await c.req.json()).id ?? null,
+  getTaskOwnerId,
+);
+
+const ownDocumentByBody = createOwnershipCheck(
+  async (c) => (await c.req.json()).id ?? null,
+  getDocumentOwnerId,
+);
 
 app.get('/api/health', (c) => {
   log.info('index:health', 'health check');
@@ -84,21 +105,20 @@ app.post('/api/threads/create', authMiddleware, async (c) => {
   return c.json(thread);
 });
 
-app.get('/api/threads/messages', authMiddleware, async (c) => {
+app.get('/api/threads/messages', authMiddleware, ownThreadByQuery, async (c) => {
   const id = parseId(c.req.query('id'));
-  if (id === null) return c.json({ error: 'Invalid id' }, 400);
-  const msgs = await loadMessages(c.env.DB, id);
+  const msgs = await loadMessages(c.env.DB, id!);
   return c.json(msgs);
 });
 
-app.post('/api/threads/delete', authMiddleware, async (c) => {
+app.post('/api/threads/delete', authMiddleware, ownThreadByBody, async (c) => {
   const { id } = await c.req.json();
   log.info('index:threads/delete', 'deleting thread', { id });
   await deleteThread(c.env.DB, id);
   return c.json({ ok: true });
 });
 
-app.post('/api/threads/update-title', authMiddleware, async (c) => {
+app.post('/api/threads/update-title', authMiddleware, ownThreadByBody, async (c) => {
   const { id, title } = await c.req.json();
   await updateThreadTitle(c.env.DB, id, title);
   return c.json({ ok: true });
@@ -141,13 +161,13 @@ app.post('/api/tasks/create', authMiddleware, async (c) => {
   return c.json(task);
 });
 
-app.post('/api/tasks/update', authMiddleware, async (c) => {
+app.post('/api/tasks/update', authMiddleware, ownTaskByBody, async (c) => {
   const { id, ...fields } = await c.req.json();
   const task = await updateTask(c.env.DB, id, fields);
   return c.json(task);
 });
 
-app.post('/api/tasks/delete', authMiddleware, async (c) => {
+app.post('/api/tasks/delete', authMiddleware, ownTaskByBody, async (c) => {
   const { id } = await c.req.json();
   await deleteTask(c.env.DB, id);
   return c.json({ ok: true });
@@ -189,9 +209,8 @@ app.get('/api/files/list', authMiddleware, async (c) => {
   return c.json(docs);
 });
 
-app.post('/api/files/delete', authMiddleware, async (c) => {
+app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
   const { id } = await c.req.json();
-  const user = c.get('user');
   const { getChunkIdsByDoc } = await import('./dao/d1');
   const chunkIds = await getChunkIdsByDoc(c.env.DB, id);
   await deleteDocument(c.env.DB, id);

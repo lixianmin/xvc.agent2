@@ -140,6 +140,11 @@ export async function deleteTask(db: D1Database, id: number): Promise<boolean> {
   return result.meta.changes > 0;
 }
 
+export async function getTaskOwnerId(db: D1Database, id: number): Promise<number | null> {
+  const row = await db.prepare('SELECT user_id FROM tasks WHERE id = ?').bind(id).first<{ user_id: number }>();
+  return row?.user_id ?? null;
+}
+
 type Thread = {
   id: number;
   user_id: number;
@@ -181,6 +186,11 @@ export async function deleteThread(db: D1Database, id: number): Promise<boolean>
 
 export async function updateThreadTitle(db: D1Database, id: number, title: string): Promise<void> {
   await db.prepare('UPDATE threads SET title = ? WHERE id = ?').bind(title, id).run();
+}
+
+export async function getThreadOwnerId(db: D1Database, id: number): Promise<number | null> {
+  const row = await db.prepare('SELECT user_id FROM threads WHERE id = ?').bind(id).first<{ user_id: number }>();
+  return row?.user_id ?? null;
 }
 
 type Message = {
@@ -353,6 +363,11 @@ export async function deleteDocument(db: D1Database, id: number): Promise<boolea
     db.prepare('DELETE FROM documents WHERE id = ?').bind(id),
   ]);
   return result[2].meta.changes > 0;
+}
+
+export async function getDocumentOwnerId(db: D1Database, id: number): Promise<number | null> {
+  const row = await db.prepare('SELECT user_id FROM documents WHERE id = ?').bind(id).first<{ user_id: number }>();
+  return row?.user_id ?? null;
 }
 
 export async function getChunkIdsByDoc(db: D1Database, docId: number): Promise<number[]> {

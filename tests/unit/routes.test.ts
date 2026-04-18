@@ -305,3 +305,115 @@ describe('GET /api/admin/outbox-status', () => {
     expect(body).toHaveProperty('processing');
   });
 });
+
+describe('Authorization: ownership checks', () => {
+  let counter = Date.now();
+  function uid() { return ++counter; }
+
+  async function setupTwoUsers() {
+    const db = env.DB as D1Database;
+    const n = uid();
+    const userA = await createUser(db, { email: `auth-a${n}@test.com`, name: 'AuthA' });
+    const userB = await createUser(db, { email: `auth-b${n}@test.com`, name: 'AuthB' });
+    return { db, userA, userB };
+  }
+
+  it('tasks/delete rejects if task belongs to another user', async () => {
+    const { db, userA, userB } = await setupTwoUsers();
+    const { createTask } = await import('../../../src/dao/d1');
+    const task = await createTask(db, { userId: userA.id, title: 'Private Task' });
+
+    const res = await app.request('/api/tasks/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: task.id }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('tasks/update rejects if task belongs to another user', async () => {
+    const { db, userA, userB } = await setupTwoUsers();
+    const { createTask } = await import('../../../src/dao/d1');
+    const task = await createTask(db, { userId: userA.id, title: 'Private Task' });
+
+    const res = await app.request('/api/tasks/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: task.id, title: 'Hacked' }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('threads/delete rejects if thread belongs to another user', async () => {
+    const { db, userA, userB } = await setupTwoUsers();
+    const { createThread } = await import('../../../src/dao/d1');
+    const thread = await createThread(db, { userId: userA.id, title: 'Private' });
+
+    const res = await app.request('/api/threads/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: thread.id }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('threads/update-title rejects if thread belongs to another user', async () => {
+    const { db, userA, userB } = await setupTwoUsers();
+    const { createThread } = await import('../../../src/dao/d1');
+    const thread = await createThread(db, { userId: userA.id, title: 'Private' });
+
+    const res = await app.request('/api/threads/update-title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: thread.id, title: 'Hacked' }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('threads/messages rejects if thread belongs to another user', async () => {
+    const { db, userA, userB } = await setupTwoUsers();
+    const { createThread } = await import('../../../src/dao/d1');
+    const thread = await createThread(db, { userId: userA.id, title: 'Private' });
+
+    const res = await app.request(`/api/threads/messages?id=${thread.id}`, {
+      headers: { 'X-User-Id': String(userB.id) },
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('files/delete rejects if document belongs to another user', async () => {
+    const { db, userA, userB } = await setupTwoUsers();
+    const { createDocument } = await import('../../../src/dao/d1');
+    const doc = await createDocument(db, {
+      userId: userA.id, filename: 'secret.txt', mimeType: 'text/plain',
+      size: 100, r2Key: 'secret', hash: 'h1',
+    });
+
+    const res = await app.request('/api/files/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userB.id) },
+      body: JSON.stringify({ id: doc.id }),
+    }, testEnv());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('tasks/delete succeeds for own task', async () => {
+    const { db, userA } = await setupTwoUsers();
+    const { createTask } = await import('../../../src/dao/d1');
+    const task = await createTask(db, { userId: userA.id, title: 'My Task' });
+
+    const res = await app.request('/api/tasks/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': String(userA.id) },
+      body: JSON.stringify({ id: task.id }),
+    }, testEnv());
+
+    expect(res.status).toBe(200);
+  });
+});
