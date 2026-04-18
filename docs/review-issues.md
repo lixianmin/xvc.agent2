@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 3 Critical, 10 Important, 14 Minor. (C3, C4 fixed)
+Full project review — 2 Critical, 10 Important, 14 Minor. (C3, C4, C5 fixed)
 
 ## Critical
 
@@ -20,11 +20,7 @@ Full project review — 3 Critical, 10 Important, 14 Minor. (C3, C4 fixed)
 
 ### ~~C4: deleteDocument 不删 D1 chunks~~ ✅ Fixed
 
-### C5: outbox 并发竞争 — process-outbox 无行级锁
-- **位置**: `src/index.ts:171-199`
-- **问题**: 多次并发调用可同时处理同一 pending 事件
-- **影响**: Qdrant 重复写入
-- **修复方向**: `UPDATE ... SET status = 'processing' WHERE status = 'pending' AND id = ?`，检查 `changes > 0`
+### ~~C5: outbox 并发竞争~~ ✅ Fixed — claimEvent 乐观锁
 
 ## Important
 

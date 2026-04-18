@@ -5,6 +5,7 @@ import {
   markCompleted,
   markFailed,
   getPendingEvents,
+  claimEvent,
 } from '../../../src/dao/outbox';
 
 describe('Outbox management', () => {
@@ -83,5 +84,24 @@ describe('Outbox management', () => {
     await db.exec("DELETE FROM outbox_events WHERE status = 'pending';");
     const events = await getPendingEvents(db);
     expect(events).toEqual([]);
+  });
+
+  it('claimEvent returns true and sets status to processing', async () => {
+    const event = await createEvent(db, { eventType: 'embed_chunk', chunkId: 100, payload: '{}' });
+    await db
+      .prepare("UPDATE outbox_events SET updated_at = datetime('now', '+8 hours', '-60 seconds') WHERE id = ?")
+      .bind(event.id)
+      .run();
+    const claimed = await claimEvent(db, event.id);
+    expect(claimed).toBe(true);
+    const row = await db.prepare('SELECT status FROM outbox_events WHERE id = ?').bind(event.id).first<{ status: string }>();
+    expect(row!.status).toBe('processing');
+  });
+
+  it('claimEvent returns false if already processing or completed', async () => {
+    const event = await createEvent(db, { eventType: 'embed_chunk', chunkId: 101, payload: '{}' });
+    await db.prepare("UPDATE outbox_events SET status = 'processing' WHERE id = ?").bind(event.id).run();
+    const claimed = await claimEvent(db, event.id);
+    expect(claimed).toBe(false);
   });
 });

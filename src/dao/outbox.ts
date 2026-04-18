@@ -50,3 +50,11 @@ export async function getPendingEvents(db: D1Database): Promise<OutboxEvent[]> {
     .all<OutboxEvent>();
   return result.results;
 }
+
+export async function claimEvent(db: D1Database, id: number): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE outbox_events SET status = 'processing', updated_at = datetime('now', '+8 hours') WHERE id = ? AND status = 'pending'")
+    .bind(id)
+    .run();
+  return result.meta.changes > 0;
+}

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
 import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, createDocument, listDocuments, deleteDocument } from './dao/d1';
-import { createEvent, markCompleted, markFailed, getPendingEvents } from './dao/outbox';
+import { createEvent, markCompleted, markFailed, getPendingEvents, claimEvent } from './dao/outbox';
 import { LLMClient } from './llm/client';
 import { EmbeddingClient } from './llm/embedding';
 import { QdrantDAO } from './dao/qdrant';
@@ -173,6 +173,9 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
   let processed = 0;
 
   for (const event of events) {
+    const claimed = await claimEvent(c.env.DB, event.id);
+    if (!claimed) continue;
+
     try {
       if (event.event_type === 'embed_chunk') {
         const payload = event.payload ? JSON.parse(event.payload) : {};
