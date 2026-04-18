@@ -10,6 +10,7 @@ xvc-agent2 部署到 Cloudflare Workers 的详细步骤。
 - 本地安装 Node.js ≥ 18
 - 准备好以下 API Key：
   - GLM API Key（或其他 OpenAI 兼容的 LLM 提供商）
+  - [SiliconFlow](https://siliconflow.cn/) API Key（用于 BAAI/bge-m3 文本向量化）
   - [Serper.dev](https://serper.dev/) API Key
   - [Qdrant Cloud](https://cloud.qdrant.io/) 集群 URL + API Key
 
@@ -83,19 +84,7 @@ npx wrangler r2 bucket list
 1. 访问 [cloud.qdrant.io](https://cloud.qdrant.io/)
 2. 创建免费集群
 3. 记录集群 URL 和 API Key
-4. 创建 Collection：
-
-```bash
-curl -X PUT "https://你的集群.qdrant.io/collections/xvc_agent_chunks" \
-  -H "api-key: 你的_QDRANT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "vectors": {
-      "size": 1024,
-      "distance": "Cosine"
-    }
-  }'
-```
+4. Collection 无需手动创建，应用首次请求时会自动创建（1024 维、Cosine 距离）
 
 ### 方案 B：本地 Qdrant（用于测试）
 
@@ -111,11 +100,23 @@ docker run -p 6333:6333 qdrant/qdrant
 npx wrangler secret put GLM_API_KEY
 # 按提示粘贴你的 Key
 
+npx wrangler secret put SILICONFLOW_API_KEY
 npx wrangler secret put SERPER_API_KEY
 npx wrangler secret put QDRANT_URL
 npx wrangler secret put QDRANT_API_KEY
 npx wrangler secret put QDRANT_COLLECTION
 ```
+
+必须设置的密钥说明：
+
+| 密钥 | 用途 |
+|------|------|
+| `GLM_API_KEY` | GLM LLM 聊天模型（主 LLM） |
+| `SILICONFLOW_API_KEY` | SiliconFlow BAAI/bge-m3 文本向量化（RAG 搜索必需） |
+| `SERPER_API_KEY` | Serper 网络搜索 |
+| `QDRANT_URL` | Qdrant 集群地址（如 `https://xxx.qdrant.io`，末尾无斜杠） |
+| `QDRANT_API_KEY` | Qdrant API 密钥 |
+| `QDRANT_COLLECTION` | Qdrant Collection 名称（建议 `xvc_agent_chunks`） |
 
 验证密钥已设置：
 

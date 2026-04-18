@@ -10,6 +10,7 @@ Step-by-step guide to deploy xvc-agent2 to Cloudflare Workers.
 - Node.js ≥ 18 installed locally
 - API keys ready:
   - GLM API key (or any OpenAI-compatible LLM provider)
+  - [SiliconFlow](https://siliconflow.cn/) API key (for BAAI/bge-m3 text embedding)
   - [Serper.dev](https://serper.dev/) API key
   - [Qdrant Cloud](https://cloud.qdrant.io/) cluster URL + API key
 
@@ -83,19 +84,7 @@ npx wrangler r2 bucket list
 1. Go to [cloud.qdrant.io](https://cloud.qdrant.io/)
 2. Create a free cluster
 3. Note your cluster URL and API key
-4. Create a collection:
-
-```bash
-curl -X PUT "https://YOUR_CLUSTER.qdrant.io/collections/xvc_agent_chunks" \
-  -H "api-key: YOUR_QDRANT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "vectors": {
-      "size": 1024,
-      "distance": "Cosine"
-    }
-  }'
-```
+4. No need to manually create a collection — the app auto-creates one on first request (1024 dimensions, Cosine distance)
 
 ### Option B: Local Qdrant (for testing)
 
@@ -111,11 +100,23 @@ Set each environment variable as a Worker secret:
 npx wrangler secret put GLM_API_KEY
 # Paste your key when prompted
 
+npx wrangler secret put SILICONFLOW_API_KEY
 npx wrangler secret put SERPER_API_KEY
 npx wrangler secret put QDRANT_URL
 npx wrangler secret put QDRANT_API_KEY
 npx wrangler secret put QDRANT_COLLECTION
 ```
+
+Required secrets:
+
+| Secret | Purpose |
+|--------|---------|
+| `GLM_API_KEY` | GLM LLM chat model (primary LLM) |
+| `SILICONFLOW_API_KEY` | SiliconFlow BAAI/bge-m3 text embedding (required for RAG search) |
+| `SERPER_API_KEY` | Serper web search |
+| `QDRANT_URL` | Qdrant cluster URL (e.g. `https://xxx.qdrant.io`, no trailing slash) |
+| `QDRANT_API_KEY` | Qdrant API key |
+| `QDRANT_COLLECTION` | Qdrant collection name (recommended: `xvc_agent_chunks`) |
 
 Verify secrets are set:
 
