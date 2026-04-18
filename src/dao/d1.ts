@@ -358,11 +358,10 @@ export async function listDocuments(db: D1Database, userId: number): Promise<Doc
 
 export async function deleteDocument(db: D1Database, id: number): Promise<boolean> {
   const result = await db.batch([
-    db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE doc_id = ?)').bind(id),
     db.prepare('DELETE FROM chunks WHERE doc_id = ?').bind(id),
     db.prepare('DELETE FROM documents WHERE id = ?').bind(id),
   ]);
-  return result[2].meta.changes > 0;
+  return result[1].meta.changes > 0;
 }
 
 export async function getDocumentOwnerId(db: D1Database, id: number): Promise<number | null> {

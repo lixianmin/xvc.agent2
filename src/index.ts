@@ -125,9 +125,11 @@ app.post('/api/threads/update-title', authMiddleware, ownThreadByBody, async (c)
 });
 
 app.post('/api/chat', authMiddleware, async (c) => {
-  const { threadId: threadIdRaw, content } = await c.req.json();
+  const { threadId: threadIdRaw, message, content: rawContent } = await c.req.json();
+  const content = message ?? rawContent;
   const threadId = parseId(threadIdRaw);
   if (threadId === null) return c.json({ error: 'Invalid threadId' }, 400);
+  if (!content) return c.json({ error: 'Missing message' }, 400);
   const user = c.get('user');
 
   log.info('index:chat', 'chat request', { threadId, userId: user.id, contentLen: content.length, hasGLMKey: !!c.env.GLM_API_KEY });

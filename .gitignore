@@ -7,3 +7,4 @@ dist/
 .DS_Storelogs/*.json
 logs/*.txt
 logs/*.log
+resume.pdf
