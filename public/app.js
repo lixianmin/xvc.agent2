@@ -598,8 +598,9 @@ function renderFiles(files) {
         const isImage = file.mime_type && file.mime_type.startsWith('image/');
         const item = document.createElement('div');
         item.className = 'file-item';
+        const dlUrl = `/api/files/download?id=${file.id}&userId=${state.userId}`;
         const descHtml = file.description ? `<div class="file-desc">${escapeHtml(file.description)}</div>` : '';
-        const imgHtml = isImage ? `<img class="file-thumb" src="/api/files/download?id=${file.id}" alt="${escapeHtml(file.filename)}" loading="lazy">` : '';
+        const imgHtml = isImage ? `<img class="file-thumb" src="${dlUrl}" alt="${escapeHtml(file.filename)}" loading="lazy">` : '';
         item.innerHTML = `
             ${imgHtml}
             <span class="file-icon">${getFileIcon(file.mime_type)}</span>
@@ -609,7 +610,7 @@ function renderFiles(files) {
                 <div class="file-meta">${formatSize(file.size)} &middot; ${escapeHtml(file.created_at || '')}</div>
             </div>
             <div class="file-actions">
-                <a class="file-download" href="/api/files/download?id=${file.id}" download="${escapeHtml(file.filename)}" title="Download" aria-label="Download file">&#x2913;</a>
+                <a class="file-download" href="${dlUrl}" download="${escapeHtml(file.filename)}" title="Download" aria-label="Download file">&#x2913;</a>
                 <button class="file-delete" title="Delete" aria-label="Delete file">&times;</button>
             </div>
         `;
@@ -623,9 +624,10 @@ function renderFiles(files) {
 }
 
 function showImagePreview(file) {
+    const dlUrl = `/api/files/download?id=${file.id}&userId=${state.userId}`;
     const overlay = document.createElement('div');
     overlay.className = 'image-preview-overlay';
-    overlay.innerHTML = `<div class="image-preview-container"><img src="/api/files/download?id=${file.id}" alt="${escapeHtml(file.filename)}"><button class="image-preview-close">&times;</button></div>`;
+    overlay.innerHTML = `<div class="image-preview-container"><img src="${dlUrl}" alt="${escapeHtml(file.filename)}"><button class="image-preview-close">&times;</button></div>`;
     overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.classList.contains('image-preview-close')) overlay.remove(); });
     document.body.appendChild(overlay);
 }

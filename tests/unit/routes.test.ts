@@ -117,7 +117,7 @@ describe('GET /api/user', () => {
 
 describe('Auth middleware', () => {
   it('blocks unauthenticated requests to protected routes', async () => {
-    const res = await app.request('/api/tasks/list?userId=1', {}, testEnv());
+    const res = await app.request('/api/tasks/list', {}, testEnv());
 
     expect(res.status).toBe(401);
   });

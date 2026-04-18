@@ -2,7 +2,7 @@ import type { Context, Next } from 'hono';
 import { getUser } from '../dao/d1';
 
 export const authMiddleware = async (c: Context, next: Next) => {
-  const userId = c.req.header('X-User-Id');
+  const userId = c.req.header('X-User-Id') || c.req.query('userId');
   if (!userId) return c.json({ error: 'Missing X-User-Id' }, 401);
   const parsed = parseInt(userId);
   if (isNaN(parsed)) return c.json({ error: 'Invalid user ID' }, 401);
