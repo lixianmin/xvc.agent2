@@ -57,7 +57,7 @@ export async function processFileUpload(
       await deps.qdrant.upsertVectors([{
         id: saved.id,
         vector,
-        payload: { chunk_id: saved.id, doc_id: doc.id, user_id: deps.userId, source: 'document', seq: chunk.seq },
+        payload: { chunk_id: saved.id, doc_id: doc.id, user_id: deps.userId, source: 'document', seq: chunk.seq, content: chunk.content },
       }]);
       await markCompleted(deps.d1, event.id);
     } catch (err) {

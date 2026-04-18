@@ -242,7 +242,7 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
           await qdrant.upsertVectors([{
             id: chunk.id,
             vector,
-            payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId, source: 'document', seq: chunk.seq },
+            payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId, source: 'document', seq: chunk.seq, content: chunk.content },
           }]);
         }
       }
