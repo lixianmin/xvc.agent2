@@ -11,9 +11,10 @@ export async function parseFile(
 
   if (ext === 'pdf') {
     try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const result = await pdfParse(Buffer.from(buffer));
-      return result.text;
+      const { getDocumentProxy, extractText } = await import('unpdf');
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      return text;
     } catch (e) {
       throw new Error(`Failed to parse PDF: ${e instanceof Error ? e.message : String(e)}`);
     }

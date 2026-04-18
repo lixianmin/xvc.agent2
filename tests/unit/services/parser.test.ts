@@ -47,9 +47,10 @@ describe('parseFile', () => {
   });
 
   describe('PDF parsing', () => {
-    it('calls pdf-parse with buffer and returns text', async () => {
-      vi.doMock('pdf-parse', () => ({
-        default: vi.fn().mockResolvedValue({ text: 'PDF content here' }),
+    it('calls unpdf with buffer and returns text', async () => {
+      vi.doMock('unpdf', () => ({
+        getDocumentProxy: vi.fn().mockResolvedValue({}),
+        extractText: vi.fn().mockResolvedValue({ totalPages: 1, text: 'PDF content here' }),
       }));
 
       vi.resetModules();
@@ -59,7 +60,7 @@ describe('parseFile', () => {
       const result = await parseFile(buffer, 'application/pdf', 'doc.pdf');
       expect(result).toBe('PDF content here');
 
-      vi.doUnmock('pdf-parse');
+      vi.doUnmock('unpdf');
       vi.resetModules();
     });
   });

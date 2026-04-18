@@ -5,7 +5,7 @@ compatibility_date = "2024-12-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "xvc-agent2"
-database_id = "TBD"
+database_id = "0ee12134-09c7-496a-9013-ed3128aae3c2"
 
 [[r2_buckets]]
 binding = "FILES"
