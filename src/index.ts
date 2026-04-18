@@ -205,14 +205,23 @@ app.post('/api/files/upload', authMiddleware, async (c) => {
     model: config.vision.model,
   }) : undefined;
 
-  const doc = await processFileUpload({
-    r2: c.env.FILES,
-    d1: c.env.DB,
-    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
-    embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),
-    userId: user.id,
-    visionClient,
-  }, file);
+  let doc;
+  try {
+    doc = await processFileUpload({
+      r2: c.env.FILES,
+      d1: c.env.DB,
+      qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
+      embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),
+      userId: user.id,
+      visionClient,
+    }, file);
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    if (msg.includes('Too many subrequests') || msg.includes('subrequest')) {
+      return c.json({ error: '云端服务请求数已达上限（免费账户限制）。建议上传较小的文件或稍后重试，升级 Cloudflare 付费账户可解除此限制。' }, 429);
+    }
+    throw err;
+  }
 
   return c.json(doc);
 });

@@ -74,8 +74,12 @@ export class AgentLoop {
         } catch (err: any) {
           flush();
           log.error(`agent:${agentId}`, 'loop error', { error: err.message, stack: err.stack });
+          const msg = err?.message ?? String(err);
+          const friendly = msg.includes('Too many subrequests') || msg.includes('subrequest')
+            ? '云端服务请求数已达上限（免费账户限制）。建议缩短对话或稍后重试。'
+            : `处理出错: ${msg}`;
           try {
-            sseSend(controller, { type: 'error', content: `处理出错: ${err.message}` });
+            sseSend(controller, { type: 'error', content: friendly });
           } catch { /* controller already closed */ }
         } finally {
           try {

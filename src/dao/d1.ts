@@ -212,12 +212,12 @@ type SaveMessageInput = {
 };
 
 export async function saveMessage(db: D1Database, input: SaveMessageInput): Promise<Message> {
-  const result = await db
-    .prepare('INSERT INTO messages (thread_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)')
-    .bind(input.thread_id, input.role, input.content, input.tool_calls ?? null, input.tool_call_id ?? null)
-    .run();
-  const id = result.meta.last_row_id as number;
-  await db.prepare("UPDATE threads SET updated_at = datetime('now', '+8 hours') WHERE id = ?").bind(input.thread_id).run();
+  const result = await db.batch([
+    db.prepare('INSERT INTO messages (thread_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)')
+      .bind(input.thread_id, input.role, input.content, input.tool_calls ?? null, input.tool_call_id ?? null),
+    db.prepare("UPDATE threads SET updated_at = datetime('now', '+8 hours') WHERE id = ?").bind(input.thread_id),
+  ]);
+  const id = result[0].meta.last_row_id as number;
   return db.prepare('SELECT * FROM messages WHERE id = ?').bind(id).first<Message>()!;
 }
 
