@@ -104,6 +104,19 @@ describe('Qdrant DAO', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:6333/collections/chunks');
   });
 
+  it('searchVectors includes source/expiration filter', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ result: [{ id: 1, score: 0.9, payload: { chunk_id: 1, source: 'chat' } }] }),
+    });
+    await dao.searchVectors([0.1], 1, 5);
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    const shouldClause = body.filter.must.find((c: any) => 'should' in c);
+    expect(shouldClause).toBeDefined();
+    expect(shouldClause.should.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('searchVectors throws on non-ok response', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     fetchMock.mockResolvedValueOnce({
