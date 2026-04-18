@@ -128,7 +128,7 @@ npm run dev
 ### Test
 
 ```bash
-# Run all tests (208 tests, 17 files)
+# Run all tests (211 tests, 17 files)
 npm test
 
 # Watch mode
@@ -141,7 +141,7 @@ See [Deployment Guide](./docs/deployment.md) for step-by-step instructions.
 
 ## Implementation Notes
 
-See [Implementation Notes (实现说明文档)](./docs/04.implementation-notes.md) for detailed architecture, sub-agent design, RAG pipeline, and challenges & solutions.
+See [Implementation Notes (实现说明文档)](./docs/04.implementation-notes.md) for requirements completion overview, detailed architecture, sub-agent design, RAG pipeline, and challenges & solutions.
 
 Quick version:
 
@@ -183,7 +183,7 @@ npm run deploy
 │   └── middleware/            # Auth middleware
 ├── public/                   # Frontend (HTML/CSS/JS)
 ├── tests/
-│   ├── unit/                 # 17 test files, 208 tests
+│   ├── unit/                 # 17 test files, 211 tests
 │   └── integration/          # Curl-based integration tests
 ├── docs/                     # Specs, plans, memory
 ├── schema.sql                # D1 database schema

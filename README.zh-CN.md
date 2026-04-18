@@ -145,7 +145,7 @@ npm run dev
 ### 运行测试
 
 ```bash
-# 运行全部测试（208 tests, 17 files）
+# 运行全部测试（211 tests, 17 files）
 npm test
 
 # 监听模式
@@ -158,7 +158,7 @@ npm run test:watch
 
 ## 实现说明文档
 
-详见 [实现说明文档](./docs/04.implementation-notes.md)，包含：整体架构、子代理实现、RAG 检索流程、文件处理管道、挑战与解决方案。
+详见 [实现说明文档](./docs/04.implementation-notes.md)，包含：需求完成度总览、整体架构、子代理实现、RAG 检索流程、文件处理管道、挑战与解决方案。
 
 快速版：
 
@@ -200,7 +200,7 @@ npm run deploy
 │   └── middleware/            # 认证中间件
 ├── public/                   # 前端（HTML/CSS/JS）
 ├── tests/
-│   ├── unit/                 # 17 个测试文件，208 个测试用例
+│   ├── unit/                 # 17 个测试文件，211 个测试用例
 │   └── integration/          # Curl 集成测试
 ├── docs/                     # 规范、计划、记忆
 ├── schema.sql                # D1 数据库 Schema
