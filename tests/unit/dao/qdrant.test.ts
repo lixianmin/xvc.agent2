@@ -33,10 +33,11 @@ describe('Qdrant DAO', () => {
 
   it('upserts vectors with payload', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: true }) });
     await dao.upsertVectors([
       { id: '1', vector: [0.1, 0.2], payload: { chunk_id: 1, doc_id: 1, user_id: 1, seq: 0 } }
     ]);
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[1];
     expect(call[0]).toBe('http://localhost:6333/collections/chunks/points');
     expect(call[1].method).toBe('PUT');
     const body = JSON.parse(call[1].body);
@@ -47,6 +48,7 @@ describe('Qdrant DAO', () => {
   });
 
   it('searches by vector with user_id filter', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ result: [{ id: '1', score: 0.95, payload: { chunk_id: 1 } }] })
@@ -54,7 +56,7 @@ describe('Qdrant DAO', () => {
     const results = await dao.searchVectors([0.1, 0.2], 1, 5);
     expect(results.length).toBe(1);
     expect(results[0].score).toBe(0.95);
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[1];
     expect(call[0]).toBe('http://localhost:6333/collections/chunks/points/search');
     expect(call[1].method).toBe('POST');
     const body = JSON.parse(call[1].body);
@@ -76,8 +78,9 @@ describe('Qdrant DAO', () => {
 
   it('sends api-key header on every request', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: true }) });
     await dao.upsertVectors([{ id: '1', vector: [0.1], payload: { chunk_id: 1, doc_id: 1, user_id: 1, seq: 0 } }]);
-    const headers = fetchMock.mock.calls[0][1].headers;
+    const headers = fetchMock.mock.calls[1][1].headers;
     expect(headers['api-key']).toBe('test-key');
     expect(headers['Content-Type']).toBe('application/json');
   });
@@ -96,6 +99,7 @@ describe('Qdrant DAO', () => {
   });
 
   it('searchVectors throws on non-ok response', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 404,
@@ -105,6 +109,7 @@ describe('Qdrant DAO', () => {
   });
 
   it('upsertVectors throws on non-ok response', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 500,

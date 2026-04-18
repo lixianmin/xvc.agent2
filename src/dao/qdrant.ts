@@ -13,6 +13,7 @@ type SearchResult = {
 
 export class QdrantDAO {
   private collectionName: string;
+  private ensurePromise: Promise<void> | null = null;
 
   constructor(private config: { url: string; apiKey: string; collection?: string }) {
     this.collectionName = config.collection ?? 'chunks';
@@ -30,20 +31,34 @@ export class QdrantDAO {
   }
 
   async ensureCollection(): Promise<void> {
+    if (!this.ensurePromise) {
+      this.ensurePromise = this.doEnsureCollection();
+    }
+    await this.ensurePromise;
+  }
+
+  private async doEnsureCollection(): Promise<void> {
     const res = await fetch(this.collectionUrl(''), { headers: this.headers() });
     if (res.ok) return;
     if (res.status === 404) {
-      await fetch(this.collectionUrl(''), {
+      const createRes = await fetch(this.collectionUrl(''), {
         method: 'PUT',
         headers: this.headers(),
         body: JSON.stringify({ vectors: { size: 1024, distance: 'Cosine' } }),
       });
+      if (!createRes.ok) {
+        this.ensurePromise = null;
+        const body = await createRes.text();
+        throw new Error(`Failed to create Qdrant collection: ${createRes.status} ${body}`);
+      }
       return;
     }
+    this.ensurePromise = null;
     throw new Error(`Failed to check collection: ${res.status}`);
   }
 
   async upsertVectors(points: QdrantPoint[]): Promise<void> {
+    await this.ensureCollection();
     const res = await fetch(this.collectionUrl('/points'), {
       method: 'PUT',
       headers: this.headers(),
@@ -53,6 +68,7 @@ export class QdrantDAO {
   }
 
   async searchVectors(query: number[], userId: number, limit: number, withVector = false): Promise<SearchResult[]> {
+    await this.ensureCollection();
     const body: Record<string, unknown> = {
       vector: query,
       filter: { must: [{ key: 'user_id', match: { value: userId } }] },
@@ -72,11 +88,12 @@ export class QdrantDAO {
 
   async deleteByChunkIds(chunkIds: number[]): Promise<void> {
     if (chunkIds.length === 0) return;
-    await fetch(this.collectionUrl('/points/delete'), {
+    const res = await fetch(this.collectionUrl('/points/delete'), {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({ ids: chunkIds.map(String) }),
     });
+    if (!res.ok) throw new Error(`Qdrant delete failed: ${res.status}`);
   }
 }
 
