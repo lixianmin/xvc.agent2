@@ -1,5 +1,5 @@
 type QdrantPoint = {
-  id: string;
+  id: number | string;
   vector: number[];
   payload: Record<string, unknown>;
 };
@@ -91,7 +91,7 @@ export class QdrantDAO {
     const res = await fetch(this.collectionUrl('/points/delete'), {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify({ ids: chunkIds.map(String) }),
+      body: JSON.stringify({ points: chunkIds }),
     });
     if (!res.ok) throw new Error(`Qdrant delete failed: ${res.status}`);
   }

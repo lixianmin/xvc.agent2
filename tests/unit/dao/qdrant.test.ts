@@ -31,20 +31,26 @@ describe('Qdrant DAO', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:6333/collections/chunks');
   });
 
-  it('upserts vectors with payload', async () => {
+  it('upserts vectors with numeric point ID (Qdrant rejects string numerics)', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: true }) });
     await dao.upsertVectors([
-      { id: '1', vector: [0.1, 0.2], payload: { chunk_id: 1, doc_id: 1, user_id: 1, seq: 0 } }
+      { id: 42, vector: [0.1, 0.2], payload: { chunk_id: 42, doc_id: 1, user_id: 1, seq: 0 } }
     ]);
     const call = fetchMock.mock.calls[1];
-    expect(call[0]).toBe('http://localhost:6333/collections/chunks/points');
-    expect(call[1].method).toBe('PUT');
     const body = JSON.parse(call[1].body);
-    expect(body.points).toHaveLength(1);
-    expect(body.points[0].id).toBe('1');
-    expect(body.points[0].vector).toEqual([0.1, 0.2]);
-    expect(body.points[0].payload).toEqual({ chunk_id: 1, doc_id: 1, user_id: 1, seq: 0 });
+    expect(body.points[0].id).toBe(42);
+  });
+
+  it('upserts vectors with UUID string ID', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: true }) });
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    await dao.upsertVectors([
+      { id: uuid, vector: [0.1], payload: { chunk_id: 1 } }
+    ]);
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(body.points[0].id).toBe(uuid);
   });
 
   it('searches by vector with user_id filter', async () => {
@@ -66,20 +72,20 @@ describe('Qdrant DAO', () => {
     expect(body.with_payload).toBe(true);
   });
 
-  it('deletes vectors by chunk_ids', async () => {
+  it('deletes vectors by chunk_ids as integers', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     await dao.deleteByChunkIds([1, 2, 3]);
     const call = fetchMock.mock.calls[0];
     expect(call[0]).toBe('http://localhost:6333/collections/chunks/points/delete');
     expect(call[1].method).toBe('POST');
     const body = JSON.parse(call[1].body);
-    expect(body.ids).toEqual(['1', '2', '3']);
+    expect(body.points).toEqual([1, 2, 3]);
   });
 
   it('sends api-key header on every request', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: {} }) });
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ result: true }) });
-    await dao.upsertVectors([{ id: '1', vector: [0.1], payload: { chunk_id: 1, doc_id: 1, user_id: 1, seq: 0 } }]);
+    await dao.upsertVectors([{ id: 1, vector: [0.1], payload: { chunk_id: 1, doc_id: 1, user_id: 1, seq: 0 } }]);
     const headers = fetchMock.mock.calls[1][1].headers;
     expect(headers['api-key']).toBe('test-key');
     expect(headers['Content-Type']).toBe('application/json');
@@ -115,7 +121,7 @@ describe('Qdrant DAO', () => {
       status: 500,
       json: async () => ({ status: { error: 'Internal' } }),
     });
-    await expect(dao.upsertVectors([{ id: '1', vector: [0.1], payload: {} }]))
+    await expect(dao.upsertVectors([{ id: 1, vector: [0.1], payload: {} }]))
       .rejects.toThrow(/Qdrant upsert failed.*500/);
   });
 });

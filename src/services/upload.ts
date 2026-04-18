@@ -55,13 +55,13 @@ export async function processFileUpload(
     try {
       const [vector] = await deps.embedding.embed([chunk.content]);
       await deps.qdrant.upsertVectors([{
-        id: String(saved.id),
+        id: saved.id,
         vector,
         payload: { chunk_id: saved.id, doc_id: doc.id, user_id: deps.userId, source: 'document', seq: chunk.seq },
       }]);
       await markCompleted(deps.d1, event.id);
     } catch (err) {
-      console.error('[upload] embed/qdrant failed, outbox will retry:', err);
+      console.error('[upload] embed/qdrant failed for chunk', saved.id, 'of doc', doc.id, ':', err instanceof Error ? err.message : err);
     }
   }
 

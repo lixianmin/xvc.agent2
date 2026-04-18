@@ -238,7 +238,7 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
           const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
           const [vector] = await embedding.embed([chunk.content]);
           await qdrant.upsertVectors([{
-            id: String(chunk.id),
+            id: chunk.id,
             vector,
             payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId, source: 'document', seq: chunk.seq },
           }]);
