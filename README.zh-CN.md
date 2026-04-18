@@ -4,6 +4,8 @@
 
 [English Documentation](./README.md)
 
+> **实现说明文档**: 详见 [Implementation Notes](./docs/04.implementation-notes.md)，包含需求完成度总览、整体架构、子代理实现、RAG 检索流程、文件处理管道、挑战与解决方案。
+
 ## 功能特性
 
 - **对话式任务管理** — 通过自然语言创建、更新、查询、删除任务
@@ -156,11 +158,7 @@ npm run test:watch
 
 详见 [部署指南](./docs/deployment.zh-CN.md)。
 
-## 实现说明文档
-
-详见 [实现说明文档](./docs/04.implementation-notes.md)，包含：需求完成度总览、整体架构、子代理实现、RAG 检索流程、文件处理管道、挑战与解决方案。
-
-快速版：
+## 快速部署
 
 ```bash
 # 1. 创建 D1 数据库

@@ -4,6 +4,8 @@ An intelligent conversational task management assistant powered by AI agents, de
 
 [中文文档](./README.zh-CN.md)
 
+> **Implementation Notes**: See [实现说明文档](./docs/04.implementation-notes.md) for requirements completion overview, architecture, sub-agent design, RAG pipeline, and challenges & solutions.
+
 ## Features
 
 - **Conversational Task Management** — Create, update, query, and delete tasks through natural language
@@ -139,11 +141,7 @@ npm run test:watch
 
 See [Deployment Guide](./docs/deployment.md) for step-by-step instructions.
 
-## Implementation Notes
-
-See [Implementation Notes (实现说明文档)](./docs/04.implementation-notes.md) for requirements completion overview, detailed architecture, sub-agent design, RAG pipeline, and challenges & solutions.
-
-Quick version:
+## Quick Deployment
 
 ```bash
 # 1. Create D1 database
