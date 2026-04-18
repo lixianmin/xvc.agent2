@@ -136,6 +136,10 @@ npm run test:watch
 
 See [Deployment Guide](./docs/deployment.md) for step-by-step instructions.
 
+## Implementation Notes
+
+See [Implementation Notes (实现说明文档)](./docs/04.implementation-notes.md) for detailed architecture, sub-agent design, RAG pipeline, and challenges & solutions.
+
 Quick version:
 
 ```bash

@@ -152,6 +152,12 @@ npm run test:watch
 
 详见 [部署指南](./docs/deployment.zh-CN.md)。
 
+## 实现说明文档
+
+详见 [实现说明文档](./docs/04.implementation-notes.md)，包含：整体架构、子代理实现、RAG 检索流程、文件处理管道、挑战与解决方案。
+
+Quick version:
+
 快速版：
 
 ```bash
