@@ -9,7 +9,9 @@
 - **对话式任务管理** — 通过自然语言创建、更新、查询、删除任务
 - **AI 子代理系统** — 复杂研究任务自动拆解，子代理并行执行、上下文隔离
 - **混合 RAG 检索** — FTS5 关键词 + Qdrant 向量搜索，RRF 融合排序
-- **文件处理流水线** — 上传 PDF/DOCX/TXT/MD → 自动解析 → 分块 → 向量化 → 存储
+- **文件处理流水线** — 上传 PDF/DOCX/TXT/MD/图片 → 自动解析 → 分块 → 向量化 → 存储
+- **图片 OCR** — 上传图片通过 GLM-4.6V 进行 OCR 识别，提取文字入 RAG
+- **长期记忆** — 用户偏好和事实通过 `memory_save` 工具持久化，跨对话召回
 - **网络搜索集成** — 通过 Serper.dev 实时检索互联网信息
 - **流式对话** — SSE 实时响应，带标点/大小智能 flush
 
@@ -21,7 +23,7 @@ Cloudflare Worker (Hono)
 ├── src/agent/
 │   ├── loop.ts           — AsyncGenerator 驱动的 Agent Loop（SSE/内存双模式）
 │   ├── sub-agent.ts      — 子代理创建，heartbeat 超时机制
-│   ├── tools.ts          — 10 个工具定义 + 约定式分发
+│   ├── tools.ts          — 11 个工具定义 + 约定式分发
 │   └── prompt.ts         — System prompt 构建器
 ├── src/llm/
 │   ├── client.ts         — LLM 客户端（OpenAI 兼容，流式输出）
@@ -67,7 +69,7 @@ Cloudflare Worker (Hono)
   → Parser (PDF/DOCX/TXT/MD → 纯文本)
   → Cleaner (去空白、控制字符、HTML、NFC 归一化)
   → Chunker (标题感知分块，~500 tokens，15% overlap)
-  → Embedder (GLM embedding API)
+  → Embedder (SiliconFlow bge-m3 embedding)
   → Qdrant upsert + D1 chunks 写入 + FTS5 索引
 
 用户提问 → Hybrid Search
@@ -141,7 +143,7 @@ npm run dev
 ### 运行测试
 
 ```bash
-# 运行全部测试（190 tests, 17 files）
+# 运行全部测试（208 tests, 17 files）
 npm test
 
 # 监听模式
@@ -195,7 +197,7 @@ npm run deploy
 │   └── middleware/            # 认证中间件
 ├── public/                   # 前端（HTML/CSS/JS）
 ├── tests/
-│   ├── unit/                 # 17 个测试文件，190 个测试用例
+│   ├── unit/                 # 17 个测试文件，208 个测试用例
 │   └── integration/          # Curl 集成测试
 ├── docs/                     # 规范、计划、记忆
 ├── schema.sql                # D1 数据库 Schema
@@ -214,9 +216,9 @@ npm run deploy
 
 ### 文件处理与向量化细节
 
-- **解析**: PDF (pdf-parse)、DOCX (mammoth)、TXT/MD (直接读取)
+- **解析**: PDF (unpdf)、DOCX (mammoth)、TXT/MD (直接读取)、图片 (GLM-4.6V OCR)
 - **分块**: 基于 Markdown 标题的感知分块器，保留标题层级上下文
-- **向量化**: GLM embedding API，维度 1024
+- **向量化**: SiliconFlow BAAI/bge-m3，维度 1024
 - **存储**: 文件存 R2，分块元数据存 D1 chunks 表，向量存 Qdrant
 - **搜索**: 支持 keyword/vector/hybrid 三种模式
 

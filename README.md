@@ -9,7 +9,9 @@ An intelligent conversational task management assistant powered by AI agents, de
 - **Conversational Task Management** — Create, update, query, and delete tasks through natural language
 - **AI Sub-Agent System** — Complex research tasks are decomposed and executed in parallel by isolated sub-agents
 - **Hybrid RAG Search** — FTS5 keyword + Qdrant vector search with RRF fusion for document retrieval
-- **File Processing Pipeline** — Upload PDF/DOCX/TXT/MD → auto parse → chunk → embed → vector store
+- **File Processing Pipeline** — Upload PDF/DOCX/TXT/MD/Images → auto parse → chunk → embed → vector store
+- **Image OCR** — Upload images for OCR via GLM-4.6V, extracted text enters RAG pipeline
+- **Long-term Memory** — User preferences and facts saved via `memory_save`, retrieved across conversations
 - **Web Search Integration** — Real-time information retrieval via Serper.dev
 - **Streaming Chat** — SSE-based real-time response streaming with flush optimization
 
@@ -21,7 +23,7 @@ Cloudflare Worker (Hono)
 ├── src/agent/
 │   ├── loop.ts           — AsyncGenerator-based agent loop (SSE/memory wrappers)
 │   ├── sub-agent.ts      — Sub-agent spawn with heartbeat timeout
-│   ├── tools.ts          — 10 tool definitions + convention-based dispatch
+│   ├── tools.ts          — 11 tool definitions + convention-based dispatch
 │   └── prompt.ts         — System prompt builder
 ├── src/llm/
 │   ├── client.ts         — LLMClient (OpenAI-compatible, streaming)
@@ -125,7 +127,7 @@ npm run dev
 ### Test
 
 ```bash
-# Run all tests (190 tests, 17 files)
+# Run all tests (208 tests, 17 files)
 npm test
 
 # Watch mode
@@ -179,7 +181,7 @@ npm run deploy
 │   └── middleware/            # Auth middleware
 ├── public/                   # Frontend (HTML/CSS/JS)
 ├── tests/
-│   ├── unit/                 # 17 test files, 190 tests
+│   ├── unit/                 # 17 test files, 208 tests
 │   └── integration/          # Curl-based integration tests
 ├── docs/                     # Specs, plans, memory
 ├── schema.sql                # D1 database schema
