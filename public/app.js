@@ -658,7 +658,14 @@ async function uploadFiles(fileList) {
                 });
                 xhr.addEventListener('load', () => {
                     if (xhr.status >= 200 && xhr.status < 300) resolve();
-                    else reject(new Error(xhr.statusText || `HTTP ${xhr.status}`));
+                    else {
+                        try {
+                            const body = JSON.parse(xhr.responseText);
+                            reject(new Error(body.error || `HTTP ${xhr.status}`));
+                        } catch {
+                            reject(new Error(xhr.statusText || `HTTP ${xhr.status}`));
+                        }
+                    }
                 });
                 xhr.addEventListener('error', () => reject(new Error('Upload failed')));
                 xhr.open('POST', '/api/files/upload');
