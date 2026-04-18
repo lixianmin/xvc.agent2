@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getToolDefinitions, getSubAgentToolDefinitions, dispatchTool } from '../../../src/agent/tools';
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc } from '../../../src/dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory } from '../../../src/dao/d1';
 import { serperSearch, fetchUrl } from '../../../src/services/web';
 import { chunksSearch } from '../../../src/services/search';
 
@@ -12,6 +12,8 @@ vi.mock('../../../src/dao/d1', () => ({
   listDocuments: vi.fn(),
   deleteDocument: vi.fn(),
   getChunkIdsByDoc: vi.fn().mockResolvedValue([]),
+  insertChatMemory: vi.fn(),
+  updateChatMemory: vi.fn(),
 }));
 
 vi.mock('../../../src/services/web', () => ({
@@ -26,8 +28,12 @@ vi.mock('../../../src/services/search', () => ({
 const mockD1 = {} as D1Database;
 const mockQdrant = {
   deleteByChunkIds: vi.fn(),
+  searchVectors: vi.fn(),
+  upsertVectors: vi.fn(),
 } as any;
-const mockEmbedding = {} as any;
+const mockEmbedding = {
+  embed: vi.fn(),
+} as any;
 
 function makeDeps() {
   return {
@@ -42,7 +48,7 @@ function makeDeps() {
 describe('getToolDefinitions', () => {
   it('returns 9 tools with correct names', () => {
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(10);
+    expect(defs).toHaveLength(11);
 
     const names = defs.map((d) => d.function.name);
     expect(names).toContain('task_create');
@@ -55,6 +61,7 @@ describe('getToolDefinitions', () => {
     expect(names).toContain('file_delete');
     expect(names).toContain('chunks_search');
     expect(names).toContain('spawn_agent');
+    expect(names).toContain('memory_save');
   });
 
   it('each tool has OpenAI function calling format', () => {
@@ -221,5 +228,36 @@ describe('dispatchTool', () => {
     const result = await dispatchTool('web_search', { q: 'test' }, makeDeps());
     const parsed = JSON.parse(result);
     expect(parsed.error).toContain('API down');
+  });
+
+  it('memory_save inserts new chat memory', async () => {
+    (insertChatMemory as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 100, content: '用户喜欢中文', source: 'chat', user_id: 1, doc_id: null, expires_at: 'some-date' });
+    mockQdrant.searchVectors.mockResolvedValueOnce([]);
+    mockEmbedding.embed.mockResolvedValueOnce([[0.1, 0.2, 0.3]]);
+
+    const result = await dispatchTool('memory_save', {
+      items: [{ content: '用户喜欢中文', category: 'preference' }],
+    }, makeDeps());
+    const parsed = JSON.parse(result);
+    expect(parsed[0].status).toBe('saved');
+    expect(mockQdrant.upsertVectors).toHaveBeenCalledTimes(1);
+    const upsertCall = mockQdrant.upsertVectors.mock.calls[0][0][0];
+    expect(upsertCall.payload.source).toBe('chat');
+    expect(typeof upsertCall.id).toBe('number');
+  });
+
+  it('memory_save updates duplicate memory', async () => {
+    (updateChatMemory as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+    mockQdrant.searchVectors.mockResolvedValueOnce([
+      { id: '50', score: 0.97, payload: { chunk_id: 50, source: 'chat', content: '旧内容' } },
+    ]);
+    mockEmbedding.embed.mockResolvedValueOnce([[0.1, 0.2, 0.3]]);
+
+    const result = await dispatchTool('memory_save', {
+      items: [{ content: '新内容', category: 'fact' }],
+    }, makeDeps());
+    const parsed = JSON.parse(result);
+    expect(parsed[0].status).toBe('updated');
+    expect(updateChatMemory).toHaveBeenCalledWith(mockD1, 50, expect.objectContaining({ content: '新内容', category: 'fact' }));
   });
 });
