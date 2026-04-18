@@ -1,6 +1,6 @@
 # Code Review Issues (2026-04-18)
 
-Full project review — 2 Critical, 6 Important, 14 Minor. (C3, C4, C5, I2, I3, I4, I5, I6, I7, I8, I9, I10, M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M13, M14 fixed)
+Full project review — 2 Critical, 6 Important, 14 Minor. (C3, C4, C5, I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M13, M14 fixed)
 
 ## Critical
 
@@ -24,11 +24,7 @@ Full project review — 2 Critical, 6 Important, 14 Minor. (C3, C4, C5, I2, I3, 
 
 ## Important
 
-### I1: LLMClient 非流式读取 — 全量缓冲
-- **位置**: `src/llm/client.ts:43`
-- **问题**: `res.text()` 一次性读取整个 LLM 响应，然后才遍历 SSE 事件
-- **影响**: 丧失流式延迟优势，首 token 等待时间长
-- **修复方向**: 用 `res.body.getReader()` 增量处理 SSE
+### ~~I1: LLMClient 非流式读取 — 全量缓冲~~ ✅ Fixed — 改用 `res.body.getReader()` 增量解析 SSE
 
 ### ~~I2: hybrid search 重复调用 embedding~~ ✅ Fixed — vectorSearchWithVectors 返回 queryVector 复用
 
