@@ -1,4 +1,4 @@
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument } from '../dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc } from '../dao/d1';
 import { serperSearch, fetchUrl } from '../services/web';
 import { chunksSearch } from '../services/search';
 
@@ -166,6 +166,8 @@ export function getToolDefinitions(): ToolDef[] {
             tasks: {
               type: 'array',
               items: { type: 'string' },
+              minItems: 1,
+              maxItems: 3,
               description: 'Task descriptions for sub-agents (1-3 tasks)',
             },
             context: {
@@ -195,7 +197,7 @@ async function do_task_create(args: any, deps: ToolDeps): Promise<string> {
 }
 
 async function do_task_list(args: any, deps: ToolDeps): Promise<string> {
-  const tasks = await listTasks(deps.d1, deps.userId);
+  const tasks = await listTasks(deps.d1, deps.userId, args.status);
   return JSON.stringify(tasks);
 }
 
@@ -225,9 +227,10 @@ async function do_file_list(args: any, deps: ToolDeps): Promise<string> {
 }
 
 async function do_file_delete(args: any, deps: ToolDeps): Promise<string> {
+  const chunkIds = await getChunkIdsByDoc(deps.d1, args.id);
   const deleted = await deleteDocument(deps.d1, args.id);
-  if (deleted) {
-    await deps.qdrant.deleteByChunkIds([]);
+  if (deleted && chunkIds.length > 0) {
+    await deps.qdrant.deleteByChunkIds(chunkIds);
   }
   return JSON.stringify({ deleted });
 }

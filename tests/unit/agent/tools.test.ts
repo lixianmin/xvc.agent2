@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getToolDefinitions, getSubAgentToolDefinitions, dispatchTool } from '../../../src/agent/tools';
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument } from '../../../src/dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc } from '../../../src/dao/d1';
 import { serperSearch, fetchUrl } from '../../../src/services/web';
 import { chunksSearch } from '../../../src/services/search';
 
@@ -11,6 +11,7 @@ vi.mock('../../../src/dao/d1', () => ({
   deleteTask: vi.fn(),
   listDocuments: vi.fn(),
   deleteDocument: vi.fn(),
+  getChunkIdsByDoc: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../src/services/web', () => ({
@@ -119,7 +120,7 @@ describe('dispatchTool', () => {
     ]);
 
     const result = await dispatchTool('task_list', {}, makeDeps());
-    expect(listTasks).toHaveBeenCalledWith(mockD1, 42);
+    expect(listTasks).toHaveBeenCalledWith(mockD1, 42, undefined);
     const parsed = JSON.parse(result);
     expect(parsed).toHaveLength(2);
   });
@@ -177,10 +178,11 @@ describe('dispatchTool', () => {
 
   it('dispatches file_delete correctly', async () => {
     (deleteDocument as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (getChunkIdsByDoc as ReturnType<typeof vi.fn>).mockResolvedValue([1, 2]);
 
     const result = await dispatchTool('file_delete', { id: 10 }, makeDeps());
     expect(deleteDocument).toHaveBeenCalledWith(mockD1, 10);
-    expect(mockQdrant.deleteByChunkIds).toHaveBeenCalled();
+    expect(mockQdrant.deleteByChunkIds).toHaveBeenCalledWith([1, 2]);
     const parsed = JSON.parse(result);
     expect(parsed.deleted).toBe(true);
   });

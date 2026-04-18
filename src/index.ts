@@ -63,6 +63,7 @@ app.get('/api/threads/list', authMiddleware, async (c) => {
 app.post('/api/threads/create', authMiddleware, async (c) => {
   const { userId, title } = await c.req.json();
   const thread = await createThread(c.env.DB, { userId, title });
+  log.info('index:threads/create', 'thread created', { id: thread.id, userId });
   return c.json(thread);
 });
 
@@ -74,6 +75,7 @@ app.get('/api/threads/messages', authMiddleware, async (c) => {
 
 app.post('/api/threads/delete', authMiddleware, async (c) => {
   const { id } = await c.req.json();
+  log.info('index:threads/delete', 'deleting thread', { id });
   await deleteThread(c.env.DB, id);
   return c.json({ ok: true });
 });
@@ -108,7 +110,8 @@ app.post('/api/chat', authMiddleware, async (c) => {
 
 app.get('/api/tasks/list', authMiddleware, async (c) => {
   const userId = parseInt(c.req.query('userId') ?? '');
-  const tasks = await listTasks(c.env.DB, userId);
+  const status = c.req.query('status') ?? undefined;
+  const tasks = await listTasks(c.env.DB, userId, status);
   return c.json(tasks);
 });
 
@@ -155,7 +158,13 @@ app.get('/api/files/list', authMiddleware, async (c) => {
 app.post('/api/files/delete', authMiddleware, async (c) => {
   const { id } = await c.req.json();
   const user = c.get('user');
+  const { getChunkIdsByDoc } = await import('./dao/d1');
+  const chunkIds = await getChunkIdsByDoc(c.env.DB, id);
   await deleteDocument(c.env.DB, id);
+  if (chunkIds.length > 0) {
+    const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
+    await qdrant.deleteByChunkIds(chunkIds);
+  }
   return c.json({ ok: true });
 });
 
@@ -169,13 +178,13 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
         const payload = event.payload ? JSON.parse(event.payload) : {};
         const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE id = ?').bind(event.chunk_id).first<any>();
         if (chunk) {
-          const embedding = new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn', model: 'BAAI/bge-m3' });
+          const embedding = new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' });
           const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
           const [vector] = await embedding.embed([chunk.content]);
           await qdrant.upsertVectors([{
             id: String(chunk.id),
             vector,
-            payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId },
+            payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId, source: 'document', seq: chunk.seq },
           }]);
         }
       }

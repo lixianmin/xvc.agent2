@@ -224,6 +224,9 @@ async function selectThread(id) {
 
 async function removeThread(id) {
     try {
+        if (state.isStreaming && state.abortController) {
+            state.abortController.abort();
+        }
         await api('POST', '/threads/delete', { id });
         state.threads = state.threads.filter(c => c.id !== id);
         if (state.currentThreadId === id) {
@@ -435,7 +438,9 @@ async function sendMessage() {
     autoResizeInput();
     state.isStreaming = true;
     setInputEnabled(false);
+    const wasHidden = $('#messages').classList.contains('hidden');
     hide($('#empty-state'));
+    if (wasHidden) $('#messages').innerHTML = '';
     show($('#messages'));
 
     appendUserMessage(content);

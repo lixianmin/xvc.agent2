@@ -180,6 +180,7 @@ export class AgentLoop {
     if (persistMessages) {
       await saveMessage(deps.d1, { thread_id: threadId, role: 'user', content: userMessage });
       const history = await loadMessages(deps.d1, threadId);
+      log.info(`agent:${agentId}`, 'loadMessages returned', { threadId, historyCount: history.length, firstMsgId: history[0]?.id, lastMsgId: history[history.length - 1]?.id });
       messages.push(
         ...history.map((m) => ({
           role: m.role,
@@ -188,9 +189,11 @@ export class AgentLoop {
           ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
         })),
       );
+    } else {
+      messages.push({ role: 'user', content: userMessage });
     }
 
-    log.info(`agent:${agentId}`, 'message history loaded', { totalMsgCount: messages.length });
+    log.info(`agent:${agentId}`, 'message history loaded', { threadId, totalMsgCount: messages.length });
 
     for (let round = 0; round < maxRounds; round++) {
       if (abortSignal?.aborted) break;

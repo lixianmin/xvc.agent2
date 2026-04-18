@@ -69,7 +69,8 @@ Reference: generic-agent `agent_runner_loop` (agent_loop.py:118-242) — iterate
 | `file_list` | List workspace files | D1 |
 | `file_delete` | Delete file and its chunks | R2 + D1 + Qdrant |
 | `chunks_search` | Unified search (keyword + vector hybrid, RRF fusion) | D1 FTS5 + Qdrant |
-| `memory_save` | Save key info to long-term memory (see memory spec) | D1 + Qdrant |
+| `spawn_agent` | Spawn 1-3 sub-agents for parallel task execution (see spawn_agent spec) | — |
+| `memory_save` | Save key info to long-term memory (see memory spec, **not yet implemented**) | D1 + Qdrant |
 
 ### Tool Dispatch
 
@@ -77,7 +78,7 @@ Convention-based: tool name `web_search` → handler function `do_web_search`. N
 
 ### SSE Events
 
-SSE stream emits three categories of events:
+SSE stream emits four categories of events:
 
 **1. LLM content events** — persisted to `messages` table, included in future LLM context:
 - `{ type: "text", content: "..." }` — assistant text response
@@ -92,6 +93,12 @@ SSE stream emits three categories of events:
 - `{ type: "status", content: "已完成搜索，正在整合结果..." }` — tool completed, next step
 
 Status events are shown as lightweight chat bubbles in the UI to reassure users the agent is active. They are ephemeral: never saved to DB, never injected into LLM context.
+
+**3. Error event** — emitted when an unhandled exception occurs in the agent loop:
+- `{ type: "error", content: "处理出错: ..." }` — fatal error, stream terminates after this
+
+**4. Limit reached event** — emitted when the agent loop hits the max round limit:
+- `{ type: "limit_reached", content: "已达到最大轮次限制" }` — loop terminates gracefully
 
 ### Console Logging
 
@@ -196,8 +203,8 @@ CREATE TABLE documents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
   filename TEXT NOT NULL,
-  mime_type TEXT,
-  size INTEGER,
+  mime_type TEXT NOT NULL,
+  size INTEGER NOT NULL,
   r2_key TEXT NOT NULL,
   hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
@@ -205,11 +212,14 @@ CREATE TABLE documents (
 
 CREATE TABLE chunks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-  seq INTEGER NOT NULL,
+  doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL,
+  seq INTEGER NOT NULL DEFAULT 0,
   content TEXT NOT NULL,
-  token_count INTEGER,
-  UNIQUE(doc_id, seq)
+  token_count INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'document',
+  expires_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
 );
 
 CREATE VIRTUAL TABLE chunks_fts USING fts5(
@@ -222,8 +232,8 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
 CREATE TABLE outbox_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_type TEXT NOT NULL CHECK (event_type IN ('embed_chunk','delete_vector')),
-  chunk_id INTEGER,
-  payload TEXT NOT NULL,
+  chunk_id INTEGER NOT NULL,
+  payload TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
   attempts INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
@@ -234,6 +244,7 @@ CREATE INDEX idx_tasks_user ON tasks(user_id);
 CREATE INDEX idx_threads_user ON threads(user_id);
 CREATE INDEX idx_messages_thread_created ON messages(thread_id, created_at);
 CREATE INDEX idx_documents_user ON documents(user_id);
+CREATE INDEX idx_chunks_user ON chunks(user_id);
 CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 ```
 
@@ -244,7 +255,7 @@ CREATE INDEX idx_outbox_status ON outbox_events(status, created_at);
 - 每个 tool_call 生成一条独立的 `role='tool'` 行，通过 `tool_call_id` 关联
 
 **索引设计说明**:
-- `idx_chunks_doc` 省略: `UNIQUE(doc_id, seq)` 约束自动创建索引
+- `idx_chunks_user`: 替代原 UNIQUE(doc_id, seq) 约束，支持按 user_id 检索 chat 记忆
 - `idx_messages_thread_created` 复合索引: 同时覆盖 WHERE thread_id=? 和 ORDER BY created_at
 
 ---
@@ -426,6 +437,17 @@ Single tool searches all chunks — no distinction between "file search" and "me
 
 For MVP: skip LLM query expansion (steps 3, 5). Only fuse FTS5 + Qdrant results with equal weights.
 
+### MMR Re-ranking (reference: qmd)
+
+After RRF fusion, results are re-ranked using Maximal Marginal Relevance to improve diversity:
+
+1. Compute query similarity for each candidate using its vector embedding
+2. Greedily select candidates maximizing: `score = λ * relevance - (1 - λ) * max_similarity_to_selected`
+3. Parameters: `λ = 0.7` (relevance vs diversity trade-off), `topK = 5`
+4. Falls back to original order if vectors are unavailable for candidates
+
+This ensures the final results are both relevant and diverse, avoiding redundancy from near-duplicate chunks.
+
 ---
 
 ## 8. LLM Layer
@@ -493,16 +515,20 @@ Reference: generic-agent's `trim_messages_history` (llmcore.py:74-86) and `compr
 All routes use GET for reads, POST for writes. No PUT, no DELETE.
 
 ```
+# Health
+GET    /api/health                    # → { status: "ok", env: {...} }
+
 # User
 POST   /api/user/create              # Body: { email, name } → { id, email, name }
-GET    /api/user/:id                  # → { id, email, name, ai_nickname }
+GET    /api/user                      # Query: ?id= → { id, email, name, ai_nickname }
 POST   /api/user/update              # Body: { id, name?, ai_nickname? } → updated user
 
 # Threads
 GET    /api/threads/list              # Query: ?userId= → [{ id, title, created_at }]
 POST   /api/threads/create            # Body: { userId, title? } → { id, title }
-GET    /api/threads/:id/messages      # Query: ?limit=&before= → [{ id, role, content, ... }]
+GET    /api/threads/messages           # Query: ?id= → [{ id, role, content, ... }]
 POST   /api/threads/delete            # Body: { id } → { ok: true }
+POST   /api/threads/update-title      # Body: { id, title } → { ok: true }
 
 # Chat (core)
 POST   /api/chat                      # Body: { threadId, content } Headers: X-User-Id
@@ -587,6 +613,13 @@ No router, no build step. Static files served by Worker from `public/`.
 - Upload area: drag-and-drop or click to select
 - Upload progress bar
 - File type icons (PDF, DOC, TXT, MD)
+
+### Settings Modal
+
+- Accessible via ⚙ button in the header
+- Modal with form fields: user name and AI nickname
+- Saving calls `POST /api/user/update` with `{ id, name, ai_nickname }`
+- Clicking overlay or close button dismisses the modal
 
 ### Thread Management
 

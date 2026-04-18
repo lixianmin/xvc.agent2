@@ -272,7 +272,7 @@ describe('AgentLoop execute() generator', () => {
     expect(events.some(e => e.type === 'status')).toBe(true);
   });
 
-  it('execute() with persistMessages=false skips all DB writes', async () => {
+  it('execute() with persistMessages=false skips DB writes but includes user message in LLM call', async () => {
     const llm = makeMockLLM([
       [{ type: 'text', content: 'ok' }],
     ]);
@@ -286,6 +286,12 @@ describe('AgentLoop execute() generator', () => {
     expect(saveMessage).not.toHaveBeenCalled();
     expect(loadMessages).not.toHaveBeenCalled();
     expect(events.some(e => e.type === 'text')).toBe(true);
+
+    const llmCallArgs = (llm.chat as any).mock.calls[0];
+    const messages = llmCallArgs[0];
+    const roles = messages.map((m: any) => m.role);
+    expect(roles).toContain('user');
+    expect(messages.find((m: any) => m.role === 'user')?.content).toBe(USER_MSG);
   });
 
   it('execute() with skipRag=true skips RAG retrieval', async () => {

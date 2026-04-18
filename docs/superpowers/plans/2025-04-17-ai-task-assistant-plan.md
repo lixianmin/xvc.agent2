@@ -1,5 +1,7 @@
 # AI Task Assistant Implementation Plan
 
+> **Historical note**: This plan was written before renaming `conversations` → `threads` and before `vitest.config.ts` → `vitest.config.mts`. References to `conversations` and `vitest.config.ts` throughout are outdated; actual code uses `threads` and `vitest.config.mts`.
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a conversational AI task management assistant on Cloudflare Worker with chat, task CRUD, web search, file upload + RAG.

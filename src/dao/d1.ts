@@ -89,7 +89,14 @@ export async function createTask(db: D1Database, input: CreateTaskInput): Promis
   return db.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first<Task>()!;
 }
 
-export async function listTasks(db: D1Database, userId: number): Promise<Task[]> {
+export async function listTasks(db: D1Database, userId: number, status?: string): Promise<Task[]> {
+  if (status) {
+    const result = await db
+      .prepare('SELECT * FROM tasks WHERE user_id = ? AND status = ? ORDER BY id DESC')
+      .bind(userId, status)
+      .all<Task>();
+    return result.results;
+  }
   const result = await db
     .prepare('SELECT * FROM tasks WHERE user_id = ? ORDER BY id DESC')
     .bind(userId)
@@ -199,6 +206,7 @@ export async function saveMessage(db: D1Database, input: SaveMessageInput): Prom
     .bind(input.thread_id, input.role, input.content, input.tool_calls ?? null, input.tool_call_id ?? null)
     .run();
   const id = result.meta.last_row_id as number;
+  await db.prepare("UPDATE threads SET updated_at = datetime('now', '+8 hours') WHERE id = ?").bind(input.thread_id).run();
   return db.prepare('SELECT * FROM messages WHERE id = ?').bind(id).first<Message>()!;
 }
 
@@ -346,6 +354,11 @@ export async function deleteDocument(db: D1Database, id: number): Promise<boolea
   return result.meta.changes > 0;
 }
 
+export async function getChunkIdsByDoc(db: D1Database, docId: number): Promise<number[]> {
+  const result = await db.prepare('SELECT id FROM chunks WHERE doc_id = ?').bind(docId).all<{ id: number }>();
+  return result.results.map(r => r.id);
+}
+
 type Chunk = {
   id: number;
   doc_id: number;
@@ -356,6 +369,7 @@ type Chunk = {
 
 type InsertChunkInput = {
   docId: number;
+  userId: number;
   seq: number;
   content: string;
   tokenCount: number;
@@ -364,7 +378,7 @@ type InsertChunkInput = {
 export async function insertChunk(db: D1Database, input: InsertChunkInput): Promise<Chunk|null> {
   const tokenized = tokenizeCJK(input.content);
   const result = await db.batch([
-    db.prepare('INSERT INTO chunks (doc_id, seq, content, token_count) VALUES (?, ?, ?, ?)').bind(input.docId, input.seq, input.content, input.tokenCount),
+    db.prepare('INSERT INTO chunks (doc_id, user_id, seq, content, token_count) VALUES (?, ?, ?, ?, ?)').bind(input.docId, input.userId, input.seq, input.content, input.tokenCount),
     db.prepare('INSERT INTO chunks_fts (rowid, content) VALUES (last_insert_rowid(), ?)').bind(tokenized),
   ]);
   const id = result[0].meta.last_row_id as number;

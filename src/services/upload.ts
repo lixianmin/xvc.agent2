@@ -49,7 +49,8 @@ export async function processFileUpload(
 
   for (const chunk of chunks) {
     const saved = await insertChunk(deps.d1, {
-      docId: doc.id,
+      docId: doc!.id,
+      userId: deps.userId,
       seq: chunk.seq,
       content: chunk.content,
       tokenCount: chunk.tokenCount,
@@ -66,7 +67,7 @@ export async function processFileUpload(
       await deps.qdrant.upsertVectors([{
         id: String(saved.id),
         vector,
-        payload: { chunk_id: saved.id, doc_id: doc.id, user_id: deps.userId },
+        payload: { chunk_id: saved.id, doc_id: doc.id, user_id: deps.userId, source: 'document', seq: chunk.seq },
       }]);
       await markCompleted(deps.d1, event.id);
     } catch (err) {

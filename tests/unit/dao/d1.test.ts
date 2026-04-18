@@ -100,6 +100,21 @@ describe('Task DAO', () => {
     expect(myTasks[0].id).toBeGreaterThan(myTasks[1].id);
   });
 
+  it('filters tasks by status', async () => {
+    const t1 = await createTask(db, { userId, title: 'Pending' });
+    const t2 = await createTask(db, { userId, title: 'ToProgress' });
+    await updateTask(db, t2.id, { status: 'in_progress' });
+
+    const all = await listTasks(db, userId);
+    expect(all.some(t => t.id === t1.id && t.status === 'pending')).toBe(true);
+    expect(all.some(t => t.id === t2.id && t.status === 'in_progress')).toBe(true);
+
+    const pending = await listTasks(db, userId, 'pending');
+    expect(pending.every(t => t.status === 'pending')).toBe(true);
+    expect(pending.some(t => t.id === t1.id)).toBe(true);
+    expect(pending.some(t => t.id === t2.id)).toBe(false);
+  });
+
   it('updates task fields', async () => {
     const task = await createTask(db, { userId, title: 'ToUpdate' });
     const updated = await updateTask(db, task.id, {
@@ -304,7 +319,7 @@ describe('Document & Chunk DAO', () => {
       "CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), filename TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, r2_key TEXT NOT NULL, hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')));",
     );
     await db.exec(
-      'CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, seq INTEGER NOT NULL, content TEXT NOT NULL, token_count INTEGER NOT NULL, UNIQUE(doc_id, seq));',
+      'CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, user_id INTEGER NOT NULL, seq INTEGER NOT NULL, content TEXT NOT NULL, token_count INTEGER NOT NULL, UNIQUE(doc_id, seq));',
     );
     await db.exec(
       "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(content, tokenize='porter unicode61', content='chunks', content_rowid='id');",
@@ -340,6 +355,7 @@ describe('Document & Chunk DAO', () => {
   it('inserts a chunk and syncs FTS', async () => {
     const chunk = await insertChunk(db, {
       docId,
+      userId,
       seq: 1,
       content: '人工智能是计算机科学的一个分支',
       tokenCount: 10,
@@ -372,7 +388,7 @@ describe('Document & Chunk DAO', () => {
       r2Key: 'uploads/del.pdf',
       hash: 'del456',
     });
-    await insertChunk(db, { docId: doc.id, seq: 1, content: 'to be deleted', tokenCount: 3 });
+    await insertChunk(db, { docId: doc.id, userId, seq: 1, content: 'to be deleted', tokenCount: 3 });
     const result = await deleteDocument(db, doc.id);
     expect(result).toBe(true);
     const docs = await listDocuments(db, userId);
