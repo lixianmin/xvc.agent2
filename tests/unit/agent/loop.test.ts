@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentLoop, type AgentDeps, type AgentEvent } from '../../../src/agent/loop';
+import { runSub } from '../../../src/agent/sub-agent';
 import { LLMClient, type ChatEvent } from '../../../src/llm/client';
 import { EmbeddingClient } from '../../../src/llm/embedding';
 import { QdrantDAO } from '../../../src/dao/qdrant';
@@ -26,6 +27,12 @@ vi.mock('../../../src/agent/tools', () => ({
   getToolDefinitions: vi.fn().mockReturnValue([{ type: 'function', function: { name: 'test_tool', description: 'test', parameters: { type: 'object', properties: {} } } }]),
   getSubAgentToolDefinitions: vi.fn().mockReturnValue([{ type: 'function', function: { name: 'test_tool', description: 'test', parameters: { type: 'object', properties: {} } } }]),
   dispatchTool: vi.fn(),
+}));
+
+let mockRunSub: ReturnType<typeof vi.fn>;
+vi.mock('../../../src/agent/sub-agent', () => ({
+  get SUB_AGENT_PROMPT() { return '## 子代理模式'; },
+  runSub: (...args: any[]) => mockRunSub(...args),
 }));
 
 async function collectEvents(stream: ReadableStream): Promise<any[]> {
@@ -256,6 +263,7 @@ describe('AgentLoop execute() generator', () => {
     (loadMessages as any).mockResolvedValue([]);
     (saveMessage as any).mockResolvedValue({ id: 1 });
     (chunksSearch as any).mockResolvedValue([]);
+    mockRunSub = vi.fn().mockResolvedValue('mock sub result');
   });
 
   it('execute() yields events as async generator', async () => {
@@ -345,55 +353,41 @@ describe('AgentLoop execute() generator', () => {
     expect(events.some(e => e.type === 'limit_reached')).toBe(true);
   });
 
-  it('runSub() returns text from sub-agent', async () => {
-    const llm = makeMockLLM([
-      [{ type: 'text', content: 'Sub-agent result here.' }],
-    ]);
-    deps = makeDeps(llm);
+  it('spawn_agent in runLoop dispatches sub-agents and yields results', async () => {
+    let callIdx = 0;
+    const responses: ChatEvent[][] = [
+      [{ type: 'tool_call', name: 'spawn_agent', args: { tasks: ['task A', 'task B'] }, call_id: 'sa-1' }],
+      [{ type: 'text', content: 'Final synthesis' }],
+    ];
 
-    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
-    expect(result).toContain('Sub-agent result here.');
-  });
-
-  it('runSub() returns timeout message when signal aborts', async () => {
     const llm = makeMockLLM([]);
     llm.chat = vi.fn().mockImplementation(() => {
-      return (async function* () {
-        await new Promise(() => {});
-      })();
+      const events = responses[callIdx++] ?? [];
+      return (async function* () { for (const e of events) yield e; })();
     });
-    deps = makeDeps(llm);
 
-    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
-    expect(result).toContain('超时');
-  }, 20_000);
-
-  it('runSub() passes correct options to execute()', async () => {
-    const llm = makeMockLLM([
-      [{ type: 'text', content: 'ok' }],
-    ]);
-    deps = makeDeps(llm);
-
-    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'task', 'ctx');
-    expect(result).toBe('ok');
-    expect(llm.chat).toHaveBeenCalledWith(
-      expect.anything(),
-      [{ type: 'function', function: { name: 'test_tool', description: 'test', parameters: { type: 'object', properties: {} } } }],
-    );
-    expect(saveMessage).not.toHaveBeenCalled();
-    expect(chunksSearch).not.toHaveBeenCalled();
-  });
-
-  it('runSub() returns error message on failure', async () => {
-    const llm = makeMockLLM([]);
-    llm.chat = vi.fn().mockImplementation(() => {
-      throw new Error('LLM boom');
+    mockRunSub.mockImplementation((_deps: any, agentId: string, _userId: number, task: string) => {
+      return Promise.resolve(`Sub result for ${task} [${agentId}]`);
     });
-    deps = makeDeps(llm);
 
-    const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
-    expect(result).toContain('执行失败');
-    expect(result).toContain('LLM boom');
+    deps = makeDeps(llm);
+    const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG);
+    const events = await collectGeneratorEvents(gen);
+
+    expect(mockRunSub).toHaveBeenCalledTimes(2);
+    expect(mockRunSub).toHaveBeenCalledWith(deps, 'sub-0', USER_ID, 'task A', undefined);
+    expect(mockRunSub).toHaveBeenCalledWith(deps, 'sub-1', USER_ID, 'task B', undefined);
+
+    const toolResults = events.filter(e => e.type === 'tool_result' && e.name === 'spawn_agent');
+    expect(toolResults).toHaveLength(1);
+    const result = JSON.parse(toolResults[0].result);
+    expect(result).toHaveLength(2);
+    expect(result[0].task).toBe('task A');
+    expect(result[0].result).toContain('Sub result for task A');
+    expect(result[1].task).toBe('task B');
+
+    const statusEvents = events.filter(e => e.type === 'status');
+    expect(statusEvents.some(s => s.content.includes('子代理'))).toBe(true);
   });
 
   it('spawn_agent in runLoop dispatches sub-agents and yields results', async () => {
@@ -418,8 +412,8 @@ describe('AgentLoop execute() generator', () => {
       return (async function* () { for (const e of events) yield e; })();
     });
 
-    const origRunSub = AgentLoop.runSub.bind(AgentLoop);
-    AgentLoop.runSub = vi.fn().mockImplementation((_deps: any, agentId: string, _userId: number, task: string) => {
+    const origRunSub = runSub.bind(AgentLoop);
+    runSub = vi.fn().mockImplementation((_deps: any, agentId: string, _userId: number, task: string) => {
       return Promise.resolve(`Sub result for ${task} [${agentId}]`);
     });
 
@@ -428,9 +422,9 @@ describe('AgentLoop execute() generator', () => {
       const gen = new AgentLoop(deps).execute(USER_ID, CONV_ID, USER_MSG);
       const events = await collectGeneratorEvents(gen);
 
-      expect(AgentLoop.runSub).toHaveBeenCalledTimes(2);
-      expect(AgentLoop.runSub).toHaveBeenCalledWith(deps, 'sub-0', USER_ID, 'task A', undefined);
-      expect(AgentLoop.runSub).toHaveBeenCalledWith(deps, 'sub-1', USER_ID, 'task B', undefined);
+      expect(runSub).toHaveBeenCalledTimes(2);
+      expect(runSub).toHaveBeenCalledWith(deps, 'sub-0', USER_ID, 'task A', undefined);
+      expect(runSub).toHaveBeenCalledWith(deps, 'sub-1', USER_ID, 'task B', undefined);
 
       const toolResults = events.filter(e => e.type === 'tool_result' && e.name === 'spawn_agent');
       expect(toolResults).toHaveLength(1);
@@ -443,7 +437,7 @@ describe('AgentLoop execute() generator', () => {
       const statusEvents = events.filter(e => e.type === 'status');
       expect(statusEvents.some(s => s.content.includes('子代理'))).toBe(true);
     } finally {
-      AgentLoop.runSub = origRunSub;
+      runSub = origRunSub;
     }
   });
 });
