@@ -49,28 +49,50 @@ export class AgentLoop {
     task: string,
     context?: string,
   ): Promise<string> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    const HEARTBEAT_MS = 10_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abortReject: ((err: Error) => void) | undefined;
+
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      abortReject = reject;
+      timer = setTimeout(() => {
+        reject(new Error('heartbeat_timeout'));
+      }, HEARTBEAT_MS);
+    });
+
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        abortReject?.(new Error('heartbeat_timeout'));
+      }, HEARTBEAT_MS);
+    };
+
     const subLoop = new AgentLoop(deps, agentId);
     try {
       let result = '';
       const userMessage = context ? `背景信息：${context}\n\n任务：${task}` : task;
-      for await (const event of subLoop.execute(userId, 0, userMessage, {
+      const gen = subLoop.execute(userId, 0, userMessage, {
         maxRounds: 15,
         persistMessages: false,
         tools: getSubAgentToolDefinitions(),
         systemPromptExtra: SUB_AGENT_PROMPT,
         skipRag: true,
-        abortSignal: controller.signal,
-      })) {
-        if (event.type === 'text') result += event.content;
+      });
+
+      while (true) {
+        const next = Promise.race([gen.next(), abortPromise]);
+        const { done, value } = await next;
+        if (done) break;
+        refresh();
+        if (value.type === 'text') result += value.content;
       }
+
+      if (timer) clearTimeout(timer);
       return result || '[子代理无输出]';
     } catch (err: any) {
-      if (controller.signal.aborted) return '[子代理执行超时]';
+      if (timer) clearTimeout(timer);
+      if (err.message === 'heartbeat_timeout') return '[子代理执行超时]';
       return `[子代理执行失败: ${err.message}]`;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 

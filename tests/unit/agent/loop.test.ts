@@ -355,7 +355,7 @@ describe('AgentLoop execute() generator', () => {
     expect(result).toContain('Sub-agent result here.');
   });
 
-  it.skip('runSub() returns timeout message when signal aborts', async () => {
+  it('runSub() returns timeout message when signal aborts', async () => {
     const llm = makeMockLLM([]);
     llm.chat = vi.fn().mockImplementation(() => {
       return (async function* () {
@@ -366,7 +366,7 @@ describe('AgentLoop execute() generator', () => {
 
     const result = await AgentLoop.runSub(deps, 'sub-0', USER_ID, 'test task');
     expect(result).toContain('超时');
-  }, 35_000);
+  }, 20_000);
 
   it('runSub() passes correct options to execute()', async () => {
     const llm = makeMockLLM([
