@@ -374,14 +374,14 @@ describe('Document & Chunk DAO', () => {
   });
 
   it('searchFTS finds CJK content', async () => {
-    const results = await searchFTS(db, '人工智能', 10);
+    const results = await searchFTS(db, '人工智能', 10, userId);
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results[0].content).toContain('人工智能');
     expect(typeof results[0].score).toBe('number');
   });
 
   it('searchFTS returns empty for no match', async () => {
-    const results = await searchFTS(db, 'xyznonexistent123', 10);
+    const results = await searchFTS(db, 'xyznonexistent123', 10, userId);
     expect(results).toEqual([]);
   });
 
@@ -415,13 +415,13 @@ describe('Document & Chunk DAO', () => {
     });
     const chunk = await insertChunk(db, { docId: doc.id, userId, seq: 1, content: 'unique FTS cleanup test content xyz789', tokenCount: 6 });
 
-    const before = await searchFTS(db, 'xyz789', userId);
+    const before = await searchFTS(db, 'xyz789', undefined, userId);
     expect(before.length).toBeGreaterThanOrEqual(1);
     expect(before[0].id).toBe(chunk.id);
 
     await deleteDocument(db, doc.id);
 
-    const after = await searchFTS(db, 'xyz789', userId);
+    const after = await searchFTS(db, 'xyz789', undefined, userId);
     expect(after.find(r => r.id === chunk.id)).toBeUndefined();
   });
 
@@ -442,12 +442,12 @@ describe('Document & Chunk DAO', () => {
       tokenCount: 10,
     });
 
-    const beforeDelete = await searchFTS(db, '触发器测试', 10);
+    const beforeDelete = await searchFTS(db, '触发器测试', 10, userId);
     expect(beforeDelete.length).toBeGreaterThanOrEqual(1);
 
     await db.prepare('DELETE FROM chunks WHERE id = ?').bind(chunk.id).run();
 
-    const afterDelete = await searchFTS(db, '触发器测试', 10);
+    const afterDelete = await searchFTS(db, '触发器测试', 10, userId);
     expect(afterDelete.find((r) => r.id === chunk.id)).toBeUndefined();
 
     await deleteDocument(db, doc.id);
@@ -515,7 +515,7 @@ describe('Document & Chunk DAO', () => {
   it('searchFTS excludes expired chat memories', async () => {
     await insertChatMemory(db, { userId, content: '过期记忆关键词唯一标识xyz999', category: 'plan' });
     await db.prepare("UPDATE chunks SET expires_at = datetime('now', '+8 hours', '-1 day') WHERE source = 'chat'").run();
-    const results = await searchFTS(db, '过期记忆关键词唯一标识xyz999', 10);
+    const results = await searchFTS(db, '过期记忆关键词唯一标识xyz999', 10, userId);
     expect(results.length).toBe(0);
   });
 
@@ -542,7 +542,7 @@ describe('Document & Chunk DAO', () => {
 
   it('searchFTS includes non-expired chat memories', async () => {
     await insertChatMemory(db, { userId, content: '有效记忆关键词唯一标识abc888', category: 'fact' });
-    const results = await searchFTS(db, '有效记忆关键词唯一标识abc888', 10);
+    const results = await searchFTS(db, '有效记忆关键词唯一标识abc888', 10, userId);
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 });

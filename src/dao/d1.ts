@@ -465,17 +465,16 @@ type FTSResult = {
   doc_id: number;
 };
 
-export async function searchFTS(db: D1Database, query: string, limit = 20, userId?: number): Promise<FTSResult[]> {
+export async function searchFTS(db: D1Database, query: string, limit: number | undefined, userId: number): Promise<FTSResult[]> {
   const tokenized = tokenizeCJK(query);
   const terms = tokenized.split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
   const ftsQuery = terms.map((t) => `${t}*`).join(' AND ');
-  const userFilter = userId !== undefined ? ' AND c.user_id = ?' : '';
   const result = await db
     .prepare(
-      `SELECT c.id, c.content, c.doc_id, bm25(chunks_fts) AS score FROM chunks_fts f JOIN chunks c ON f.rowid = c.id WHERE chunks_fts MATCH ?${userFilter} AND (c.source = 'document' OR (c.source = 'chat' AND (c.expires_at IS NULL OR c.expires_at > datetime('now', '+8 hours')))) ORDER BY score LIMIT ?`,
+      `SELECT c.id, c.content, c.doc_id, bm25(chunks_fts) AS score FROM chunks_fts f JOIN chunks c ON f.rowid = c.id WHERE chunks_fts MATCH ? AND c.user_id = ? AND (c.source = 'document' OR (c.source = 'chat' AND (c.expires_at IS NULL OR c.expires_at > datetime('now', '+8 hours')))) ORDER BY score LIMIT ?`,
     )
-    .bind(ftsQuery, ...(userId !== undefined ? [userId] : []), limit)
+    .bind(ftsQuery, userId, limit ?? 20)
     .all<FTSResult>();
   return result.results;
 }
