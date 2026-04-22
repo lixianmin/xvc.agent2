@@ -274,7 +274,10 @@ export class AgentLoop {
 
   private async doRagRetrieval(query: string, userId: number): Promise<{ context: string; topVectorScore: number }> {
     try {
-      const timeout = new Promise<{ context: string; topVectorScore: number }>((resolve) => setTimeout(() => { log.warn(`agent:${this.agentId}`, `RAG retrieval timed out after ${config.agent.ragTimeoutMs / 1000}s`); resolve({ context: '', topVectorScore: 0 }); }, config.agent.ragTimeoutMs));
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const timeout = new Promise<{ context: string; topVectorScore: number }>((resolve) => {
+        timer = setTimeout(() => { log.warn(`agent:${this.agentId}`, `RAG retrieval timed out after ${config.agent.ragTimeoutMs / 1000}s`); resolve({ context: '', topVectorScore: 0 }); }, config.agent.ragTimeoutMs);
+      });
       const search = chunksSearch(query, userId, 'hybrid', {
         d1: this.deps.d1,
         qdrant: this.deps.qdrant,
@@ -286,7 +289,9 @@ export class AgentLoop {
         const context = results.map((r) => r.content).join('\n---\n');
         return { context, topVectorScore };
       });
-      return await Promise.race([search, timeout]);
+      const result = await Promise.race([search, timeout]);
+      if (timer) clearTimeout(timer);
+      return result;
     } catch (err: any) {
       log.warn(`agent:${this.agentId}`, 'RAG retrieval failed', { error: err.message });
       return { context: '', topVectorScore: 0 };
