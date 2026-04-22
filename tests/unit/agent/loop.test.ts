@@ -217,6 +217,22 @@ describe('AgentLoop', () => {
     }));
   });
 
+  it('uses max vectorScore across all results, not results[0]', async () => {
+    (chunksSearch as any).mockResolvedValue([
+      { id: 1, content: 'low score first', score: 0.05, doc_id: 10, vectorScore: 0.45 },
+      { id: 2, content: 'high score second', score: 0.03, doc_id: 11, vectorScore: 0.92 },
+    ]);
+    const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
+    deps = makeDeps(llm);
+
+    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
+    await collectEvents(stream);
+
+    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      ragConfidence: 'high',
+    }));
+  });
+
   it('sets ragConfidence to low when top vectorScore below threshold', async () => {
     (chunksSearch as any).mockResolvedValue([
       { id: 1, content: 'weak match', score: 0.03, doc_id: 10, vectorScore: 0.45 },

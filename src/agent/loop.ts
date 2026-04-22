@@ -282,7 +282,7 @@ export class AgentLoop {
       }).then((results) => {
         log.info(`agent:${this.agentId}`, 'RAG search results', { count: results.length });
         if (results.length === 0) return { context: '', topVectorScore: 0 };
-        const topVectorScore = results[0]?.vectorScore ?? 0;
+        const topVectorScore = Math.max(0, ...results.map(r => r.vectorScore ?? 0));
         const context = results.map((r) => r.content).join('\n---\n');
         return { context, topVectorScore };
       });
