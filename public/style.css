@@ -541,6 +541,33 @@ html, body {
     border: none;
 }
 
+.message.data-source {
+    justify-content: center;
+}
+
+.message.data-source .message-bubble {
+    font-size: 12px;
+    padding: 6px 14px;
+    text-align: center;
+    border: none;
+    border-radius: var(--radius-sm);
+}
+
+.message.data-source .message-bubble.source-high {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.message.data-source .message-bubble.source-low {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.message.data-source .message-bubble.source-none {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
 .tool-call-badge {
     margin-top: 8px;
     border: 1px solid var(--border);

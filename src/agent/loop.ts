@@ -11,6 +11,7 @@ import { config } from '../config';
 
 export type AgentEvent =
   | { type: 'status'; content: string }
+  | { type: 'data_source'; source: 'rag_high' | 'rag_low' | 'none'; topScore: number }
   | { type: 'text'; content: string }
   | { type: 'tool_call'; name: string; args: Record<string, unknown>; call_id: string }
   | { type: 'tool_result'; name: string; call_id: string; result: string }
@@ -122,6 +123,8 @@ export class AgentLoop {
         ? (ragResult.topVectorScore >= config.search.ragConfidenceThreshold ? 'high' : 'low')
         : 'none';
       log.info(`agent:${this.agentId}`, 'RAG retrieval done', { contextLen: ragContext.length, topVectorScore: ragResult.topVectorScore, ragConfidence });
+      const source = ragConfidence === 'high' ? 'rag_high' : ragConfidence === 'low' ? 'rag_low' : 'none';
+      yield { type: 'data_source', source, topScore: ragResult.topVectorScore };
     }
 
     const user = await getUser(deps.d1, userId);
