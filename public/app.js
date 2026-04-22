@@ -519,7 +519,6 @@ async function sendMessage() {
                     switch (event.type) {
                         case 'text':
                             if (statusEl) { statusEl.remove(); statusEl = null; }
-                            if (dataSourceEl) { dataSourceEl.remove(); dataSourceEl = null; }
                             if (!assistantEl) {
                                 assistantEl = appendAssistantMessage('');
                                 assistantBubble = assistantEl.querySelector('.message-bubble');
