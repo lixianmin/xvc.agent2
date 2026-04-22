@@ -32,7 +32,7 @@ export function reciprocalRankFusion(
     .sort((a, b) => b.score - a.score);
 }
 
-type ChunkResult = { id: number; content: string; score: number; doc_id: number };
+type ChunkResult = { id: number; content: string; score: number; doc_id: number; vectorScore?: number };
 type ChunkWithVector = ChunkResult & { vector?: number[] };
 
 function cosineSim(a: number[], b: number[]): number {
@@ -93,6 +93,7 @@ export function mmrRerank(
     content: candidates[idx].content,
     score: candidates[idx].score,
     doc_id: candidates[idx].doc_id,
+    vectorScore: candidates[idx].vectorScore,
   }));
 }
 
@@ -160,6 +161,7 @@ export async function chunksSearch(
       score: item.score,
       doc_id: ftsHit?.doc_id ?? vecHit?.doc_id ?? 0,
       vector: vecHit?.vector,
+      vectorScore: vecHit?.vectorScore,
     };
   });
 
@@ -192,6 +194,7 @@ async function vectorSearch(
     content: (r.payload.content as string) ?? '',
     score: r.score,
     doc_id: (r.payload.doc_id as number) ?? 0,
+    vectorScore: r.score,
   }));
 }
 
@@ -218,6 +221,7 @@ async function vectorSearchWithVectors(
       score: r.score,
       doc_id: (r.payload.doc_id as number) ?? 0,
       vector: r.vector as number[] | undefined,
+      vectorScore: r.score,
     })),
   };
 }

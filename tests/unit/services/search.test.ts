@@ -121,6 +121,42 @@ describe('chunksSearch', () => {
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
+
+  it('in keyword mode has vectorScore undefined', async () => {
+    const deps = makeDeps();
+    const result = await chunksSearch('test query', 1, 'keyword', deps);
+    for (const r of result) {
+      expect(r.vectorScore).toBeUndefined();
+    }
+  });
+
+  it('in vector mode populates vectorScore from Qdrant', async () => {
+    const deps = makeDeps();
+    const result = await chunksSearch('test query', 1, 'vector', deps);
+    expect(result.length).toBeGreaterThan(0);
+    for (const r of result) {
+      expect(r.vectorScore).toBeTypeOf('number');
+    }
+    expect(result[0].vectorScore).toBe(0.9);
+  });
+
+  it('in hybrid mode propagates vectorScore through mmrRerank', async () => {
+    const deps = makeDeps();
+    const result = await chunksSearch('test query', 1, 'hybrid', deps);
+    const withVecScore = result.filter(r => r.vectorScore !== undefined);
+    expect(withVecScore.length).toBeGreaterThan(0);
+    const vecScored = result.find(r => r.id === 2);
+    expect(vecScored?.vectorScore).toBe(0.9);
+  });
+
+  it('in hybrid mode falls back to FTS-only with vectorScore undefined', async () => {
+    const deps = makeDeps();
+    deps.qdrant.searchVectors.mockResolvedValue([]);
+    const result = await chunksSearch('test query', 1, 'hybrid', deps);
+    for (const r of result) {
+      expect(r.vectorScore).toBeUndefined();
+    }
+  });
 });
 
 describe('mmrRerank', () => {
@@ -164,5 +200,18 @@ describe('mmrRerank', () => {
 
     const result = mmrRerank(candidates, queryVec, 0.7, 2);
     expect(result).toHaveLength(2);
+  });
+
+  it('preserves vectorScore in output', () => {
+    const queryVec = [1, 0, 0];
+    const candidates = [
+      { id: 1, content: 'a', score: 1, doc_id: 0, vector: [1, 0, 0], vectorScore: 0.95 },
+      { id: 2, content: 'b', score: 0.8, doc_id: 0, vector: [0, 1, 0], vectorScore: 0.7 },
+    ];
+    const result = mmrRerank(candidates, queryVec, 0.7, 2);
+    expect(result).toHaveLength(2);
+    const byId = new Map(result.map(r => [r.id, r]));
+    expect(byId.get(1)?.vectorScore).toBe(0.95);
+    expect(byId.get(2)?.vectorScore).toBe(0.7);
   });
 });
