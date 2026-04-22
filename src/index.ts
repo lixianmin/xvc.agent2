@@ -253,12 +253,16 @@ app.get('/api/files/download', authMiddleware, async (c) => {
 
 app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
   const { id } = await c.req.json();
-  const { getChunkIdsByDoc } = await import('./dao/d1');
+  const { getChunkIdsByDoc, getDocument } = await import('./dao/d1');
+  const doc = await getDocument(c.env.DB, id);
   const chunkIds = await getChunkIdsByDoc(c.env.DB, id);
   await deleteDocument(c.env.DB, id);
   if (chunkIds.length > 0) {
     const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
     await qdrant.deleteByChunkIds(chunkIds);
+  }
+  if (doc?.r2_key) {
+    await c.env.FILES.delete(doc.r2_key);
   }
   return c.json({ ok: true });
 });
