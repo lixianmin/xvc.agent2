@@ -159,75 +159,51 @@ describe('buildSystemPrompt', () => {
   });
 });
 
-describe('ragConfidence guidance', () => {
-    it('injects high-confidence guidance when ragConfidence is high', () => {
+describe('RAG info in prompt', () => {
+    it('includes factual RAG info when results found', () => {
         const result = buildSystemPrompt({
             tools: sampleTools,
             userName: 'Alice',
             ragContext: 'doc content here',
-            ragConfidence: 'high',
+            ragResultCount: 3,
+            ragTopScore: 0.72,
             datetime: '2025-04-17 14:30:00 CST',
         });
 
-        expect(result).toContain('已从文档中检索到高质量匹配结果');
-        expect(result).toContain('无需使用 web_search');
-        expect(result).not.toContain('建议使用 web_search 补充');
-    });
-
-    it('injects low-confidence guidance when ragConfidence is low', () => {
-        const result = buildSystemPrompt({
-            tools: sampleTools,
-            userName: 'Alice',
-            ragContext: 'weak doc content',
-            ragConfidence: 'low',
-            datetime: '2025-04-17 14:30:00 CST',
-        });
-
-        expect(result).toContain('文档匹配度较低');
-        expect(result).toContain('建议使用 web_search 补充');
+        expect(result).toContain('知识库检索到 3 条相关结果');
+        expect(result).toContain('最高相似度 0.72');
+        expect(result).not.toContain('建议使用 web_search');
         expect(result).not.toContain('无需使用 web_search');
     });
 
-    it('omits guidance when ragConfidence is none', () => {
+    it('omits RAG info when no results', () => {
         const result = buildSystemPrompt({
             tools: sampleTools,
             userName: 'Alice',
             ragContext: '',
-            ragConfidence: 'none',
             datetime: '2025-04-17 14:30:00 CST',
         });
 
-        expect(result).not.toContain('已从文档中检索到高质量匹配结果');
-        expect(result).not.toContain('建议使用 web_search 补充');
+        expect(result).not.toContain('知识库检索到');
+        expect(result).not.toContain('最高相似度');
     });
 
-    it('omits guidance when ragConfidence is undefined', () => {
-        const result = buildSystemPrompt({
-            tools: sampleTools,
-            userName: 'Alice',
-            ragContext: 'some content',
-            datetime: '2025-04-17 14:30:00 CST',
-        });
-
-        expect(result).not.toContain('已从文档中检索到高质量匹配结果');
-        expect(result).not.toContain('建议使用 web_search 补充');
-    });
-
-    it('places guidance after RAG section and before systemPromptExtra', () => {
+    it('places RAG info after RAG context and before systemPromptExtra', () => {
         const result = buildSystemPrompt({
             tools: sampleTools,
             userName: 'Alice',
             ragContext: 'doc content',
-            ragConfidence: 'high',
+            ragResultCount: 1,
+            ragTopScore: 0.5,
             datetime: '2025-04-17 14:30:00 CST',
             systemPromptExtra: '## Extra section',
         });
 
         const ragIdx = result.indexOf('相关文档');
-        const guidanceIdx = result.indexOf('已从文档中检索到高质量匹配结果');
+        const infoIdx = result.indexOf('知识库检索到');
         const extraIdx = result.indexOf('Extra section');
 
-        expect(guidanceIdx).toBeGreaterThan(ragIdx);
-        expect(extraIdx).toBeGreaterThan(guidanceIdx);
+        expect(infoIdx).toBeGreaterThan(ragIdx);
+        expect(extraIdx).toBeGreaterThan(infoIdx);
     });
 });

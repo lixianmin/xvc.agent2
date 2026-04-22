@@ -1,4 +1,4 @@
-import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory, getExpiresAt } from '../dao/d1';
+import { createTask, listTasks, updateTask, deleteTask, listDocuments, deleteDocument, getDocument, getChunkIdsByDoc, insertChatMemory, updateChatMemory, getExpiresAt } from '../dao/d1';
 import { serperSearch, fetchUrl } from '../services/web';
 import { chunksSearch } from '../services/search';
 import { log } from '../services/logger';
@@ -256,7 +256,6 @@ async function do_file_list(args: any, deps: ToolDeps): Promise<string> {
 }
 
 async function do_file_delete(args: any, deps: ToolDeps): Promise<string> {
-  const { getDocument } = await import('../dao/d1');
   const doc = await getDocument(deps.d1, args.id);
   const chunkIds = await getChunkIdsByDoc(deps.d1, args.id);
   const deleted = await deleteDocument(deps.d1, args.id);

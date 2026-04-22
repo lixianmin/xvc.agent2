@@ -201,7 +201,7 @@ describe('AgentLoop', () => {
     }));
   });
 
-  it('computes ragConfidence from top vectorScore', async () => {
+  it('passes ragResultCount and ragTopScore to buildSystemPrompt', async () => {
     (chunksSearch as any).mockResolvedValue([
       { id: 1, content: 'doc content', score: 0.05, doc_id: 10, vectorScore: 0.92 },
       { id: 2, content: 'other doc', score: 0.03, doc_id: 11, vectorScore: 0.75 },
@@ -214,11 +214,12 @@ describe('AgentLoop', () => {
 
     expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
       ragContext: 'doc content\n---\nother doc',
-      ragConfidence: 'high',
+      ragResultCount: 2,
+      ragTopScore: 0.92,
     }));
   });
 
-  it('uses max vectorScore across all results, not results[0]', async () => {
+  it('uses max vectorScore across all results', async () => {
     (chunksSearch as any).mockResolvedValue([
       { id: 1, content: 'low score first', score: 0.05, doc_id: 10, vectorScore: 0.45 },
       { id: 2, content: 'high score second', score: 0.03, doc_id: 11, vectorScore: 0.92 },
@@ -230,26 +231,11 @@ describe('AgentLoop', () => {
     await collectEvents(stream);
 
     expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      ragConfidence: 'high',
+      ragTopScore: 0.92,
     }));
   });
 
-  it('sets ragConfidence to low when top vectorScore below threshold', async () => {
-    (chunksSearch as any).mockResolvedValue([
-      { id: 1, content: 'weak match', score: 0.03, doc_id: 10, vectorScore: 0.45 },
-    ]);
-    const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
-    deps = makeDeps(llm);
-
-    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
-    await collectEvents(stream);
-
-    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      ragConfidence: 'low',
-    }));
-  });
-
-  it('sets ragConfidence to none when no RAG results', async () => {
+  it('passes ragResultCount=0 when no RAG results', async () => {
     (chunksSearch as any).mockResolvedValue([]);
     const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
     deps = makeDeps(llm);
@@ -258,11 +244,12 @@ describe('AgentLoop', () => {
     await collectEvents(stream);
 
     expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      ragConfidence: 'none',
+      ragResultCount: 0,
+      ragContext: '',
     }));
   });
 
-  it('sets ragConfidence to low when RAG results have no vectorScore', async () => {
+  it('handles RAG results with no vectorScore', async () => {
     (chunksSearch as any).mockResolvedValue([
       { id: 1, content: 'fts only', score: -1.5, doc_id: 10 },
     ]);
@@ -273,7 +260,8 @@ describe('AgentLoop', () => {
     await collectEvents(stream);
 
     expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      ragConfidence: 'low',
+      ragResultCount: 1,
+      ragTopScore: 0,
     }));
   });
 

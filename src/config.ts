@@ -25,7 +25,6 @@ export const config = {
     mmrTopK: 5,
     ftsLimit: 20,
     vectorLimit: 20,
-    ragConfidenceThreshold: 0.6,
   },
   chunker: {
     targetTokens: 500,

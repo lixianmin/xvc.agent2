@@ -371,7 +371,7 @@ function appendDataSourceMessage(content, source) {
     const container = $('#messages');
     const div = document.createElement('div');
     div.className = 'message data-source';
-    const colorClass = source === 'rag_high' ? 'source-high' : source === 'rag_low' ? 'source-low' : 'source-none';
+    const colorClass = source === 'rag' ? 'source-rag' : 'source-none';
     div.innerHTML = `<div class="message-body"><div class="message-bubble ${colorClass}">${content}</div></div>`;
     container.appendChild(div);
     scrollToBottom();
@@ -567,11 +567,9 @@ async function sendMessage() {
                             break;
                         case 'data_source':
                             if (dataSourceEl) dataSourceEl.remove();
-                            const label = event.source === 'rag_high'
-                                ? `📄 文档匹配度 ${(event.topScore * 100).toFixed(0)}%，基于文档回答`
-                                : event.source === 'rag_low'
-                                ? `📄 文档匹配度 ${(event.topScore * 100).toFixed(0)}%，建议补充网络搜索`
-                                : '🔍 未检索到相关文档，可能使用网络搜索';
+                            const label = event.source === 'rag'
+                                ? `📄 知识库检索到 ${event.resultCount} 条结果，相似度 ${(event.topScore * 100).toFixed(0)}%`
+                                : '🔍 未检索到相关文档';
                             dataSourceEl = appendDataSourceMessage(label, event.source);
                             break;
                         case 'error':

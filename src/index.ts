@@ -243,10 +243,11 @@ app.get('/api/files/download', authMiddleware, async (c) => {
   if (doc.user_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
   const obj = await c.env.FILES.get(doc.r2_key);
   if (!obj) return c.json({ error: 'File not found in storage' }, 404);
-  return new Response(obj.body, {
-    headers: {
-      'Content-Type': doc.mime_type,
-      'Content-Disposition': `attachment; filename="${doc.filename}"`,
+      const safeName = doc.filename.replace(/["\r\n]/g, '_');
+      return new Response(obj.body, {
+        headers: {
+          'Content-Type': doc.mime_type,
+          'Content-Disposition': `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
       'Content-Length': String(doc.size),
     },
   });
@@ -296,6 +297,9 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
             payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId, source: 'document', seq: chunk.seq, content: chunk.content },
           }]);
         }
+      } else if (event.event_type === 'delete_vector') {
+        const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
+        await qdrant.deleteByChunkIds([event.chunk_id]);
       }
       await markCompleted(c.env.DB, event.id);
       processed++;
@@ -317,4 +321,43 @@ app.get('/api/admin/outbox-status', authMiddleware, async (c) => {
   });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+    const events = await getPendingEvents(env.DB);
+    let processed = 0;
+
+    for (const event of events) {
+      const claimed = await claimEvent(env.DB, event.id);
+      if (!claimed) continue;
+
+      try {
+        if (event.event_type === 'embed_chunk') {
+          const payload = event.payload ? JSON.parse(event.payload) : {};
+          const chunk = await getChunk(env.DB, event.chunk_id);
+          if (chunk) {
+            const embedding = new EmbeddingClient({ apiKey: env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model });
+            const qdrant = new QdrantDAO({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY, collection: env.QDRANT_COLLECTION });
+            const [vector] = await embedding.embed([chunk.content]);
+            await qdrant.upsertVectors([{
+              id: chunk.id,
+              vector,
+              payload: { chunk_id: chunk.id, doc_id: chunk.doc_id, user_id: payload.userId, source: 'document', seq: chunk.seq, content: chunk.content },
+            }]);
+          }
+        } else if (event.event_type === 'delete_vector') {
+          const qdrant = new QdrantDAO({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY, collection: env.QDRANT_COLLECTION });
+          await qdrant.deleteByChunkIds([event.chunk_id]);
+        }
+        await markCompleted(env.DB, event.id);
+        processed++;
+      } catch {
+        await markFailed(env.DB, event.id);
+      }
+    }
+
+    log.info('index:scheduled', 'outbox processed', { processed });
+  },
+};
+
+export { app };

@@ -553,19 +553,14 @@ html, body {
     border-radius: var(--radius-sm);
 }
 
-.message.data-source .message-bubble.source-high {
-    background: #e8f5e9;
-    color: #2e7d32;
-}
-
-.message.data-source .message-bubble.source-low {
-    background: #fff3e0;
-    color: #e65100;
+.message.data-source .message-bubble.source-rag {
+    background: #e3f2fd;
+    color: #1565c0;
 }
 
 .message.data-source .message-bubble.source-none {
-    background: #e3f2fd;
-    color: #1565c0;
+    background: #f5f5f5;
+    color: #757575;
 }
 
 .tool-call-badge {

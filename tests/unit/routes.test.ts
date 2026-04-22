@@ -65,7 +65,7 @@ beforeAll(async () => {
   await db.exec("CREATE TRIGGER IF NOT EXISTS chunks_fts_ad AFTER DELETE ON chunks BEGIN INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.id, old.content); END;");
 
   const mod = await import('../../../src/index');
-  app = mod.default;
+  app = mod.app;
 });
 
 describe('POST /api/user/create', () => {

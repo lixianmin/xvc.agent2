@@ -5,7 +5,8 @@ export function buildSystemPrompt(params: {
   userName: string;
   aiNickname?: string;
   ragContext?: string;
-  ragConfidence?: 'high' | 'low' | 'none';
+  ragResultCount?: number;
+  ragTopScore?: number;
   datetime: string;
   systemPromptExtra?: string;
 }): string {
@@ -88,15 +89,12 @@ ${JSON.stringify(params.tools, null, 2)}`);
   sections.push(userSection);
 
   if (params.ragContext) {
+    const scoreDisplay = params.ragTopScore ? `，最高相似度 ${params.ragTopScore.toFixed(2)}` : '';
     sections.push(`## 相关文档
-以下是从用户上传的文档中检索到的相关内容：
-${params.ragContext}`);
-  }
+从用户上传的知识库检索到 ${params.ragResultCount ?? 0} 条相关结果${scoreDisplay}。
+请根据这些内容的质量和相关性自行判断是否需要使用 web_search 补充信息。
 
-  if (params.ragConfidence === 'high') {
-    sections.push('已从文档中检索到高质量匹配结果，请优先基于上述文档内容回答，无需使用 web_search。');
-  } else if (params.ragConfidence === 'low') {
-    sections.push('文档匹配度较低，如需更准确的信息，建议使用 web_search 补充。');
+${params.ragContext}`);
   }
 
   if (params.systemPromptExtra) {

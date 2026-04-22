@@ -39,7 +39,10 @@ export class QdrantDAO {
 
   private async doEnsureCollection(): Promise<void> {
     const res = await fetch(this.collectionUrl(''), { headers: this.headers() });
-    if (res.ok) return;
+    if (res.ok) {
+      await this.ensurePayloadIndexes();
+      return;
+    }
     if (res.status === 404) {
       const createRes = await fetch(this.collectionUrl(''), {
         method: 'PUT',
@@ -51,10 +54,44 @@ export class QdrantDAO {
         const body = await createRes.text();
         throw new Error(`Failed to create Qdrant collection: ${createRes.status} ${body}`);
       }
+      await this.ensurePayloadIndexes();
       return;
     }
     this.ensurePromise = null;
     throw new Error(`Failed to check collection: ${res.status}`);
+  }
+
+  private indexes: Record<string, string> = {
+    user_id: 'integer',
+    source: 'keyword',
+    expires_at: 'datetime',
+  };
+
+  private async ensurePayloadIndexes(): Promise<void> {
+    const existing = await this.getExistingIndexes();
+    for (const [field, schema] of Object.entries(this.indexes)) {
+      if (existing.includes(field)) continue;
+      const res = await fetch(this.collectionUrl('/index'), {
+        method: 'PUT',
+        headers: this.headers(),
+        body: JSON.stringify({ field_name: field, field_schema: schema }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.warn(`Failed to create index ${field}: ${res.status} ${body}`);
+      }
+    }
+  }
+
+  private async getExistingIndexes(): Promise<string[]> {
+    try {
+      const res = await fetch(this.collectionUrl('/index'), { headers: this.headers() });
+      if (!res?.ok) return [];
+      const data = await res.json() as { result?: { index_type?: string; field_name?: string }[] };
+      return (data.result ?? []).map((idx) => idx.field_name ?? '').filter(Boolean);
+    } catch {
+      return [];
+    }
   }
 
   async upsertVectors(points: QdrantPoint[]): Promise<void> {

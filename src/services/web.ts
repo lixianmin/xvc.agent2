@@ -35,7 +35,11 @@ export async function fetchUrl(url: string): Promise<string> {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal, redirect: 'manual' });
+
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error(`Redirects are not allowed (status ${res.status})`);
+    }
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} ${res.statusText}`);
@@ -107,6 +111,12 @@ function validateUrl(url: string): void {
     }
     if (ipv6.startsWith('fc') || ipv6.startsWith('fd') || ipv6.startsWith('fe80:')) {
       throw new Error('URL hostname is blocked: private/local IPv6 address');
+    }
+    const ipv4Mapped = ipv6.replace(/^::ffff:/, '');
+    for (const range of PRIVATE_IP_RANGES) {
+      if (range.test(ipv4Mapped)) {
+        throw new Error(`URL hostname is blocked: private IP via IPv4-mapped IPv6`);
+      }
     }
   }
 
