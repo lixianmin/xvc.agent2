@@ -158,3 +158,76 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('Test');
   });
 });
+
+describe('ragConfidence guidance', () => {
+    it('injects high-confidence guidance when ragConfidence is high', () => {
+        const result = buildSystemPrompt({
+            tools: sampleTools,
+            userName: 'Alice',
+            ragContext: 'doc content here',
+            ragConfidence: 'high',
+            datetime: '2025-04-17 14:30:00 CST',
+        });
+
+        expect(result).toContain('已从文档中检索到高质量匹配结果');
+        expect(result).toContain('无需使用 web_search');
+        expect(result).not.toContain('建议使用 web_search 补充');
+    });
+
+    it('injects low-confidence guidance when ragConfidence is low', () => {
+        const result = buildSystemPrompt({
+            tools: sampleTools,
+            userName: 'Alice',
+            ragContext: 'weak doc content',
+            ragConfidence: 'low',
+            datetime: '2025-04-17 14:30:00 CST',
+        });
+
+        expect(result).toContain('文档匹配度较低');
+        expect(result).toContain('建议使用 web_search 补充');
+        expect(result).not.toContain('无需使用 web_search');
+    });
+
+    it('omits guidance when ragConfidence is none', () => {
+        const result = buildSystemPrompt({
+            tools: sampleTools,
+            userName: 'Alice',
+            ragContext: '',
+            ragConfidence: 'none',
+            datetime: '2025-04-17 14:30:00 CST',
+        });
+
+        expect(result).not.toContain('已从文档中检索到高质量匹配结果');
+        expect(result).not.toContain('建议使用 web_search 补充');
+    });
+
+    it('omits guidance when ragConfidence is undefined', () => {
+        const result = buildSystemPrompt({
+            tools: sampleTools,
+            userName: 'Alice',
+            ragContext: 'some content',
+            datetime: '2025-04-17 14:30:00 CST',
+        });
+
+        expect(result).not.toContain('已从文档中检索到高质量匹配结果');
+        expect(result).not.toContain('建议使用 web_search 补充');
+    });
+
+    it('places guidance after RAG section and before systemPromptExtra', () => {
+        const result = buildSystemPrompt({
+            tools: sampleTools,
+            userName: 'Alice',
+            ragContext: 'doc content',
+            ragConfidence: 'high',
+            datetime: '2025-04-17 14:30:00 CST',
+            systemPromptExtra: '## Extra section',
+        });
+
+        const ragIdx = result.indexOf('相关文档');
+        const guidanceIdx = result.indexOf('已从文档中检索到高质量匹配结果');
+        const extraIdx = result.indexOf('Extra section');
+
+        expect(guidanceIdx).toBeGreaterThan(ragIdx);
+        expect(extraIdx).toBeGreaterThan(guidanceIdx);
+    });
+});
