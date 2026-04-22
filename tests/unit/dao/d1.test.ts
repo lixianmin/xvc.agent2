@@ -404,6 +404,27 @@ describe('Document & Chunk DAO', () => {
     expect(remainingChunks!.cnt).toBe(0);
   });
 
+  it('deleteDocument cleans up FTS entries for deleted chunks', async () => {
+    const doc = await createDocument(db, {
+      userId,
+      filename: 'fts-cleanup.txt',
+      mimeType: 'text/plain',
+      size: 100,
+      r2Key: 'uploads/fts-cleanup.txt',
+      hash: 'fts-del-001',
+    });
+    const chunk = await insertChunk(db, { docId: doc.id, userId, seq: 1, content: 'unique FTS cleanup test content xyz789', tokenCount: 6 });
+
+    const before = await searchFTS(db, 'xyz789', userId);
+    expect(before.length).toBeGreaterThanOrEqual(1);
+    expect(before[0].id).toBe(chunk.id);
+
+    await deleteDocument(db, doc.id);
+
+    const after = await searchFTS(db, 'xyz789', userId);
+    expect(after.find(r => r.id === chunk.id)).toBeUndefined();
+  });
+
   it('FTS trigger removes index when chunk is directly deleted', async () => {
     const doc = await createDocument(db, {
       userId,
