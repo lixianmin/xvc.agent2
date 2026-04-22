@@ -22,9 +22,10 @@
 `ChunkResult` 新增 `vectorScore?: number` 字段，透传 Qdrant 返回的原始 cosine 相似度（0~1）。
 
 - `ChunkWithVector` 同步新增 `vectorScore` 字段
-- **混合模式**：在 `candidates` 构建时从 `vecHit` 取 Qdrant 原始 score 填入 `vectorScore`
-- **vector-only 模式**：直接用 Qdrant 返回的 `r.score`
+- **混合模式**：在 `candidates` 构建时从 `vecHit` 取 Qdrant 原始 score 填入 `vectorScore`。**关键**：`mmrRerank` 返回时必须透传 `vectorScore`（当前实现只映射 `{ id, content, score, doc_id }`，会丢弃该字段）
+- **vector-only 模式**：`vectorSearch` 函数映射时需显式包含 `vectorScore: r.score`
 - **keyword-only 模式**：`vectorScore` 为 undefined
+- **混合模式向量为空退化为纯 FTS 时**（search.ts:144）：`vectorScore` 全部为 undefined，`topVectorScore` 为 0，行为等同于无 RAG 高分结果，符合预期
 
 ### 2. 决策层：doRagRetrieval 改造
 
@@ -41,22 +42,24 @@
 `execute` 方法中：
 ```typescript
 const { context: ragContext, topVectorScore } = await this.doRagRetrieval(userMessage, userId);
-const ragHighConfidence = topVectorScore >= 0.8;
+const ragConfidence = ragContext.length === 0 ? 'none' : topVectorScore >= config.search.ragConfidenceThreshold ? 'high' : 'low';
 ```
 
-将 `ragHighConfidence` 传给 `buildSystemPrompt`。
+将 `ragConfidence`（三态：`'high' | 'low' | 'none'`）传给 `buildSystemPrompt`。
+
+使用三态而非布尔值，以区分「无 RAG 结果」和「有结果但分数低」两种情况。
 
 ### 3. Prompt 层：条件引导
 
 **文件：`src/agent/prompt.ts`**
 
-`buildSystemPrompt` 新增参数 `ragHighConfidence?: boolean`。
+`buildSystemPrompt` 新增参数 `ragConfidence?: 'high' | 'low' | 'none'`。
 
 在「相关文档」section 之后、`systemPromptExtra` 之前追加条件引导文案：
 
-- **ragHighConfidence = true**：`已从文档中检索到高质量匹配结果，请优先基于上述文档内容回答，无需使用 web_search。`
-- **ragHighConfidence = false**（有 RAG 结果但分数低）：`文档匹配度较低，如需更准确的信息，建议使用 web_search 补充。`
-- **无 RAG 结果**（ragContext 为空）：不追加引导
+- **ragConfidence = 'high'**：`已从文档中检索到高质量匹配结果，请优先基于上述文档内容回答，无需使用 web_search。`
+- **ragConfidence = 'low'**：`文档匹配度较低，如需更准确的信息，建议使用 web_search 补充。`
+- **ragConfidence = 'none'** 或 undefined：不追加引导
 
 ### 4. 配置
 
@@ -73,7 +76,7 @@ ragConfidenceThreshold: 0.8,
 
 - **单元测试**：`chunksSearch` 各模式下 `vectorScore` 字段的正确填充
 - **单元测试**：`doRagRetrieval` 返回结构化 `{ context, topVectorScore }`，含边界情况
-- **单元测试**：`buildSystemPrompt` 的三种分支（highConfidence/lowConfidence/noRag）输出正确引导文案
+- **单元测试**：`buildSystemPrompt` 的三种分支（high/low/none）输出正确引导文案
 - 不需要新的集成测试，SSE 流程不变
 
 ## 影响范围
@@ -82,5 +85,5 @@ ragConfidenceThreshold: 0.8,
 |------|------|
 | `src/services/search.ts` | ChunkResult/ChunkWithVector 新增 vectorScore 字段，混合模式透传 |
 | `src/agent/loop.ts` | doRagRetrieval 返回结构化结果，execute 中判断 ragHighConfidence |
-| `src/agent/prompt.ts` | buildSystemPrompt 新增 ragHighConfidence 参数及条件引导 |
+| `src/agent/prompt.ts` | buildSystemPrompt 新增 ragConfidence 参数及条件引导 |
 | `src/config.ts` | search.ragConfidenceThreshold |
