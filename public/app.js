@@ -511,8 +511,8 @@ async function sendMessage() {
                     if (event.type !== 'text') {
                         const detail = event.type === 'tool_call'
                             ? `${event.name}(${JSON.stringify(event.args || {})?.slice(0, 120)})`
-                            : event.type === 'tool_result'
-                            ? `${event.name} → ${String(event.result || '').slice(0, 150)}`
+                            : event.type === 'data_source'
+                            ? `${event.source} score=${event.topScore}`
                             : event.content || '';
                         console.log(`[sse] ${event.type}`, detail);
                     }
