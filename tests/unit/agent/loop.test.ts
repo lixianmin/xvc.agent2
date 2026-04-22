@@ -200,6 +200,66 @@ describe('AgentLoop', () => {
     }));
   });
 
+  it('computes ragConfidence from top vectorScore', async () => {
+    (chunksSearch as any).mockResolvedValue([
+      { id: 1, content: 'doc content', score: 0.05, doc_id: 10, vectorScore: 0.92 },
+      { id: 2, content: 'other doc', score: 0.03, doc_id: 11, vectorScore: 0.75 },
+    ]);
+    const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
+    deps = makeDeps(llm);
+
+    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
+    await collectEvents(stream);
+
+    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      ragContext: 'doc content\n---\nother doc',
+      ragConfidence: 'high',
+    }));
+  });
+
+  it('sets ragConfidence to low when top vectorScore below threshold', async () => {
+    (chunksSearch as any).mockResolvedValue([
+      { id: 1, content: 'weak match', score: 0.03, doc_id: 10, vectorScore: 0.45 },
+    ]);
+    const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
+    deps = makeDeps(llm);
+
+    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
+    await collectEvents(stream);
+
+    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      ragConfidence: 'low',
+    }));
+  });
+
+  it('sets ragConfidence to none when no RAG results', async () => {
+    (chunksSearch as any).mockResolvedValue([]);
+    const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
+    deps = makeDeps(llm);
+
+    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
+    await collectEvents(stream);
+
+    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      ragConfidence: 'none',
+    }));
+  });
+
+  it('sets ragConfidence to low when RAG results have no vectorScore', async () => {
+    (chunksSearch as any).mockResolvedValue([
+      { id: 1, content: 'fts only', score: -1.5, doc_id: 10 },
+    ]);
+    const llm = makeMockLLM([[{ type: 'text', content: 'ok' }]]);
+    deps = makeDeps(llm);
+
+    const stream = new AgentLoop(deps).run(USER_ID, CONV_ID, USER_MSG);
+    await collectEvents(stream);
+
+    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      ragConfidence: 'low',
+    }));
+  });
+
   it('persists messages to DB', async () => {
     const llm = makeMockLLM([
       [

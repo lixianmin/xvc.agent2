@@ -111,10 +111,16 @@ export class AgentLoop {
     const { deps } = this;
 
     let ragContext = '';
+    let ragConfidence: 'high' | 'low' | 'none' = 'none';
     if (!options?.skipRag) {
       yield { type: 'status', content: '正在检索相关文档...' };
-      ragContext = await this.doRagRetrieval(userMessage, userId);
-      log.info(`agent:${this.agentId}`, 'RAG retrieval done', { contextLen: ragContext.length });
+      const ragResult = await this.doRagRetrieval(userMessage, userId);
+      ragContext = ragResult.context;
+      const hasRag = ragContext.length > 0;
+      ragConfidence = hasRag
+        ? (ragResult.topVectorScore >= config.search.ragConfidenceThreshold ? 'high' : 'low')
+        : 'none';
+      log.info(`agent:${this.agentId}`, 'RAG retrieval done', { contextLen: ragContext.length, topVectorScore: ragResult.topVectorScore, ragConfidence });
     }
 
     const user = await getUser(deps.d1, userId);
@@ -122,7 +128,7 @@ export class AgentLoop {
     const aiNickname = user?.ai_nickname ?? undefined;
     const datetime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
     const tools = options?.tools ?? getToolDefinitions();
-    const systemPrompt = buildSystemPrompt({ tools, userName, aiNickname, ragContext, datetime, systemPromptExtra: options?.systemPromptExtra });
+    const systemPrompt = buildSystemPrompt({ tools, userName, aiNickname, ragContext, ragConfidence, datetime, systemPromptExtra: options?.systemPromptExtra });
     log.info(`agent:${this.agentId}`, 'system prompt built', { promptLen: systemPrompt.length, userName, toolCount: tools.length });
 
     const messages: Message[] = [{ role: 'system', content: systemPrompt }];
@@ -266,22 +272,24 @@ export class AgentLoop {
     }
   }
 
-  private async doRagRetrieval(query: string, userId: number): Promise<string> {
+  private async doRagRetrieval(query: string, userId: number): Promise<{ context: string; topVectorScore: number }> {
     try {
-      const timeout = new Promise<string>((resolve) => setTimeout(() => { log.warn(`agent:${this.agentId}`, `RAG retrieval timed out after ${config.agent.ragTimeoutMs / 1000}s`); resolve(''); }, config.agent.ragTimeoutMs));
+      const timeout = new Promise<{ context: string; topVectorScore: number }>((resolve) => setTimeout(() => { log.warn(`agent:${this.agentId}`, `RAG retrieval timed out after ${config.agent.ragTimeoutMs / 1000}s`); resolve({ context: '', topVectorScore: 0 }); }, config.agent.ragTimeoutMs));
       const search = chunksSearch(query, userId, 'hybrid', {
         d1: this.deps.d1,
         qdrant: this.deps.qdrant,
         embedding: this.deps.embedding,
       }).then((results) => {
         log.info(`agent:${this.agentId}`, 'RAG search results', { count: results.length });
-        if (results.length === 0) return '';
-        return results.map((r) => r.content).join('\n---\n');
+        if (results.length === 0) return { context: '', topVectorScore: 0 };
+        const topVectorScore = results[0]?.vectorScore ?? 0;
+        const context = results.map((r) => r.content).join('\n---\n');
+        return { context, topVectorScore };
       });
       return await Promise.race([search, timeout]);
     } catch (err: any) {
       log.warn(`agent:${this.agentId}`, 'RAG retrieval failed', { error: err.message });
-      return '';
+      return { context: '', topVectorScore: 0 };
     }
   }
 }
