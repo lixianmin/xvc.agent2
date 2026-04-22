@@ -47,8 +47,9 @@ export class LLMClient {
         let textChunks = 0;
         let toolCallCount = 0;
         let sseBuffer = '';
+        let streamDone = false;
 
-        while (true) {
+        while (!streamDone) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -62,7 +63,7 @@ export class LLMClient {
             const line = block.trim();
             if (!line.startsWith('data: ')) continue;
             const payload = line.slice(6);
-            if (payload === '[DONE]') break;
+            if (payload === '[DONE]') { streamDone = true; break; }
 
             let parsed: { choices?: { delta?: { content?: string; tool_calls?: DeltaToolCall[] }; finish_reason?: string | null }[] };
             try { parsed = JSON.parse(payload); } catch { continue; }
