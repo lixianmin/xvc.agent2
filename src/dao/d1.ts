@@ -180,8 +180,11 @@ export async function listThreads(db: D1Database, userId: number): Promise<Threa
 }
 
 export async function deleteThread(db: D1Database, id: number): Promise<boolean> {
-  const result = await db.prepare('DELETE FROM threads WHERE id = ?').bind(id).run();
-  return result.meta.changes > 0;
+  const result = await db.batch([
+    db.prepare('DELETE FROM messages WHERE thread_id = ?').bind(id),
+    db.prepare('DELETE FROM threads WHERE id = ?').bind(id),
+  ]);
+  return result[1].meta.changes > 0;
 }
 
 export async function updateThreadTitle(db: D1Database, id: number, title: string): Promise<void> {
