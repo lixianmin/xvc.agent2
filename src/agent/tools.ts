@@ -22,6 +22,7 @@ export type ToolDeps = {
   qdrant: any;
   embedding: any;
   serperApiKey: string;
+  files: R2Bucket;
 };
 
 export function getToolDefinitions(): ToolDef[] {
@@ -255,10 +256,15 @@ async function do_file_list(args: any, deps: ToolDeps): Promise<string> {
 }
 
 async function do_file_delete(args: any, deps: ToolDeps): Promise<string> {
+  const { getDocument } = await import('../dao/d1');
+  const doc = await getDocument(deps.d1, args.id);
   const chunkIds = await getChunkIdsByDoc(deps.d1, args.id);
   const deleted = await deleteDocument(deps.d1, args.id);
   if (deleted && chunkIds.length > 0) {
     await deps.qdrant.deleteByChunkIds(chunkIds);
+  }
+  if (deleted && doc?.r2_key) {
+    await deps.files.delete(doc.r2_key);
   }
   return JSON.stringify({ deleted });
 }

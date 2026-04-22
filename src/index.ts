@@ -141,6 +141,7 @@ app.post('/api/chat', authMiddleware, async (c) => {
     llm: new LLMClient({ apiKey: c.env.GLM_API_KEY, baseUrl: config.llm.baseUrl, model: config.llm.model }),
     embedding: new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model }),    qdrant: new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION }),
     serperApiKey: c.env.SERPER_API_KEY,
+    files: c.env.FILES,
   };
 
   const loop = new AgentLoop(deps);

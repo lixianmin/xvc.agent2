@@ -23,6 +23,7 @@ export type AgentDeps = {
   embedding: EmbeddingClient;
   qdrant: QdrantDAO;
   serperApiKey: string;
+  files: R2Bucket;
 };
 
 function sseSend(controller: ReadableStreamDefaultController, event: Record<string, unknown>) {
@@ -227,6 +228,7 @@ export class AgentLoop {
         qdrant: deps.qdrant,
         embedding: deps.embedding,
         serperApiKey: deps.serperApiKey,
+        files: deps.files,
       };
 
       for (const tc of toolCalls) {

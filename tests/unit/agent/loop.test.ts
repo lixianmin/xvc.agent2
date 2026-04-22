@@ -79,6 +79,7 @@ function makeDeps(llm: LLMClient): AgentDeps {
     embedding: { embed: vi.fn().mockResolvedValue([[0.1, 0.2]]) } as any,
     qdrant: { searchVectors: vi.fn().mockResolvedValue([]) } as any,
     serperApiKey: 'serper-key',
+    files: { delete: vi.fn().mockResolvedValue(undefined) } as any,
   };
 }
 
