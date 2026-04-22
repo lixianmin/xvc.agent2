@@ -262,15 +262,33 @@ export async function loadMessages(db: D1Database, threadId: number, tokenBudget
   const selected = selectedGroups.flatMap((g) => g.messages);
   if (selected.length === 0) return [];
 
+  const selectedSet = new Set(selected.map((m) => m.id));
+
   const lastIdx = messages.length - 1;
   const lastUserIdx = messages.reduce((acc, m, i) => (m.role === 'user' ? i : acc), -1);
 
-  const selectedSet = new Set(selected.map((m) => m.id));
-  if (!selectedSet.has(messages[lastIdx].id)) {
-    selected.push(messages[lastIdx]);
-  }
-  if (lastUserIdx >= 0 && !selectedSet.has(messages[lastUserIdx].id)) {
-    selected.push(messages[lastUserIdx]);
+  const forcedMsgIds = new Set<number>();
+  if (!selectedSet.has(messages[lastIdx].id)) forcedMsgIds.add(lastIdx);
+  if (lastUserIdx >= 0 && !selectedSet.has(messages[lastUserIdx].id)) forcedMsgIds.add(lastUserIdx);
+
+  if (forcedMsgIds.size > 0) {
+    const forcedGroupIdxes = new Set<number>();
+    for (const msgIdx of forcedMsgIds) {
+      for (let gi = 0; gi < groups.length; gi++) {
+        if (groups[gi].messages.some((m) => m.id === messages[msgIdx].id)) {
+          forcedGroupIdxes.add(gi);
+          break;
+        }
+      }
+    }
+    for (const gi of forcedGroupIdxes) {
+      for (const m of groups[gi].messages) {
+        if (!selectedSet.has(m.id)) {
+          selected.push(m);
+          selectedSet.add(m.id);
+        }
+      }
+    }
   }
 
   const idxMap = new Map(messages.map((m, i) => [m.id, i]));
