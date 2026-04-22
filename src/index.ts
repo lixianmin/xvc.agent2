@@ -7,7 +7,7 @@ import { EmbeddingClient } from './llm/embedding';
 import { QdrantDAO } from './dao/qdrant';
 import { AgentLoop } from './agent/loop';
 import { authMiddleware } from './middleware/auth';
-import { createOwnershipCheck } from './middleware/ownership';
+import { createOwnershipCheck, createBodyOwnershipCheck } from './middleware/ownership';
 import { processFileUpload } from './services/upload';
 import { config } from './config';
 import { log } from './services/logger';
@@ -51,18 +51,18 @@ const ownThreadByQuery = createOwnershipCheck(
   getThreadOwnerId,
 );
 
-const ownThreadByBody = createOwnershipCheck(
-  async (c) => (await c.req.json()).id ?? null,
+const ownThreadByBody = createBodyOwnershipCheck<{ id: number }>(
+  (body) => body.id ?? null,
   getThreadOwnerId,
 );
 
-const ownTaskByBody = createOwnershipCheck(
-  async (c) => (await c.req.json()).id ?? null,
+const ownTaskByBody = createBodyOwnershipCheck<{ id: number }>(
+  (body) => body.id ?? null,
   getTaskOwnerId,
 );
 
-const ownDocumentByBody = createOwnershipCheck(
-  async (c) => (await c.req.json()).id ?? null,
+const ownDocumentByBody = createBodyOwnershipCheck<{ id: number }>(
+  (body) => body.id ?? null,
   getDocumentOwnerId,
 );
 
@@ -114,14 +114,14 @@ app.get('/api/threads/messages', authMiddleware, ownThreadByQuery, async (c) => 
 });
 
 app.post('/api/threads/delete', authMiddleware, ownThreadByBody, async (c) => {
-  const { id } = await c.req.json();
+  const { id } = c.get('parsedBody') as { id: number };
   log.info('index:threads/delete', 'deleting thread', { id });
   await deleteThread(c.env.DB, id);
   return c.json({ ok: true });
 });
 
 app.post('/api/threads/update-title', authMiddleware, ownThreadByBody, async (c) => {
-  const { id, title } = await c.req.json();
+  const { id, title } = c.get('parsedBody') as { id: number; title: string };
   await updateThreadTitle(c.env.DB, id, title);
   return c.json({ ok: true });
 });
@@ -165,13 +165,13 @@ app.post('/api/tasks/create', authMiddleware, async (c) => {
 });
 
 app.post('/api/tasks/update', authMiddleware, ownTaskByBody, async (c) => {
-  const { id, ...fields } = await c.req.json();
+  const { id, ...fields } = c.get('parsedBody') as { id: number; [key: string]: unknown };
   const task = await updateTask(c.env.DB, id, fields);
   return c.json(task);
 });
 
 app.post('/api/tasks/delete', authMiddleware, ownTaskByBody, async (c) => {
-  const { id } = await c.req.json();
+  const { id } = c.get('parsedBody') as { id: number };
   await deleteTask(c.env.DB, id);
   return c.json({ ok: true });
 });
@@ -252,7 +252,7 @@ app.get('/api/files/download', authMiddleware, async (c) => {
 });
 
 app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
-  const { id } = await c.req.json();
+  const { id } = c.get('parsedBody') as { id: number };
   const doc = await getDocument(c.env.DB, id);
   const chunkIds = await getChunkIdsByDoc(c.env.DB, id);
   await deleteDocument(c.env.DB, id);
@@ -267,7 +267,7 @@ app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
 });
 
 app.post('/api/files/rename', authMiddleware, ownDocumentByBody, async (c) => {
-  const { id, filename } = await c.req.json();
+  const { id, filename } = c.get('parsedBody') as { id: number; filename: string };
   if (!filename || typeof filename !== 'string') return c.json({ error: 'Invalid filename' }, 400);
   const doc = await renameDocument(c.env.DB, id, filename);
   return c.json(doc);
