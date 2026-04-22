@@ -462,6 +462,7 @@ async function sendMessage() {
     }
 
     let statusEl = null;
+    let dataSourceEl = null;
     let assistantEl = null;
     let assistantBubble = null;
     let fullText = '';
@@ -518,6 +519,7 @@ async function sendMessage() {
                     switch (event.type) {
                         case 'text':
                             if (statusEl) { statusEl.remove(); statusEl = null; }
+                            if (dataSourceEl) { dataSourceEl.remove(); dataSourceEl = null; }
                             if (!assistantEl) {
                                 assistantEl = appendAssistantMessage('');
                                 assistantBubble = assistantEl.querySelector('.message-bubble');
@@ -565,13 +567,13 @@ async function sendMessage() {
                             statusEl = appendStatusMessage(event.content);
                             break;
                         case 'data_source':
-                            if (statusEl) { statusEl.remove(); statusEl = null; }
+                            if (dataSourceEl) dataSourceEl.remove();
                             const label = event.source === 'rag_high'
                                 ? `📄 文档匹配度 ${(event.topScore * 100).toFixed(0)}%，基于文档回答`
                                 : event.source === 'rag_low'
                                 ? `📄 文档匹配度 ${(event.topScore * 100).toFixed(0)}%，建议补充网络搜索`
                                 : '🔍 未检索到相关文档，可能使用网络搜索';
-                            statusEl = appendDataSourceMessage(label, event.source);
+                            dataSourceEl = appendDataSourceMessage(label, event.source);
                             break;
                         case 'error':
                             if (statusEl) { statusEl.remove(); statusEl = null; }
