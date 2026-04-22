@@ -58,3 +58,8 @@ export async function claimEvent(db: D1Database, id: number): Promise<boolean> {
     .run();
   return result.meta.changes > 0;
 }
+
+export async function countByStatus(db: D1Database, status: string): Promise<number> {
+  const r = await db.prepare('SELECT COUNT(*) as cnt FROM outbox_events WHERE status = ?').bind(status).first<{ cnt: number }>();
+  return r?.cnt ?? 0;
+}

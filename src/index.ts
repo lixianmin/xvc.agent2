@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, getTaskOwnerId, createDocument, listDocuments, deleteDocument, renameDocument, getDocumentOwnerId, getThreadOwnerId } from './dao/d1';
-import { createEvent, markCompleted, markFailed, getPendingEvents, claimEvent } from './dao/outbox';
+import { createUser, getUser, updateUser, createThread, listThreads, deleteThread, updateThreadTitle, saveMessage, loadMessages, createTask, listTasks, updateTask, deleteTask, getTaskOwnerId, createDocument, getDocument, listDocuments, deleteDocument, renameDocument, getDocumentOwnerId, getThreadOwnerId, getChunk, getChunkIdsByDoc } from './dao/d1';
+import { createEvent, markCompleted, markFailed, getPendingEvents, claimEvent, countByStatus } from './dao/outbox';
 import { LLMClient } from './llm/client';
 import { EmbeddingClient } from './llm/embedding';
 import { QdrantDAO } from './dao/qdrant';
@@ -236,7 +236,7 @@ app.get('/api/files/list', authMiddleware, async (c) => {
 app.get('/api/files/download', authMiddleware, async (c) => {
   const id = parseId(c.req.query('id'));
   if (id === null) return c.json({ error: 'Invalid id' }, 400);
-  const doc = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<any>();
+  const doc = await getDocument(c.env.DB, id);
   if (!doc) return c.json({ error: 'Document not found' }, 404);
   const user = c.get('user');
   if (doc.user_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
@@ -253,7 +253,6 @@ app.get('/api/files/download', authMiddleware, async (c) => {
 
 app.post('/api/files/delete', authMiddleware, ownDocumentByBody, async (c) => {
   const { id } = await c.req.json();
-  const { getChunkIdsByDoc, getDocument } = await import('./dao/d1');
   const doc = await getDocument(c.env.DB, id);
   const chunkIds = await getChunkIdsByDoc(c.env.DB, id);
   await deleteDocument(c.env.DB, id);
@@ -285,7 +284,7 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
     try {
       if (event.event_type === 'embed_chunk') {
         const payload = event.payload ? JSON.parse(event.payload) : {};
-        const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE id = ?').bind(event.chunk_id).first<any>();
+        const chunk = await getChunk(c.env.DB, event.chunk_id);
         if (chunk) {
           const embedding = new EmbeddingClient({ apiKey: c.env.SILICONFLOW_API_KEY, baseUrl: config.embedding.baseUrl, model: config.embedding.model });
           const qdrant = new QdrantDAO({ url: c.env.QDRANT_URL, apiKey: c.env.QDRANT_API_KEY, collection: c.env.QDRANT_COLLECTION });
@@ -309,15 +308,11 @@ app.post('/api/admin/process-outbox', authMiddleware, async (c) => {
 
 app.get('/api/admin/outbox-status', authMiddleware, async (c) => {
   const db = c.env.DB;
-  const count = async (status: string) => {
-    const r = await db.prepare('SELECT COUNT(*) as cnt FROM outbox_events WHERE status = ?').bind(status).first<{ cnt: number }>();
-    return r?.cnt ?? 0;
-  };
   return c.json({
-    pending: await count('pending'),
-    processing: await count('processing'),
-    failed: await count('failed'),
-    completed: await count('completed'),
+    pending: await countByStatus(db, 'pending'),
+    processing: await countByStatus(db, 'processing'),
+    failed: await countByStatus(db, 'failed'),
+    completed: await countByStatus(db, 'completed'),
   });
 });
 

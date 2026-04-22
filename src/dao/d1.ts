@@ -353,6 +353,10 @@ export async function createDocument(db: D1Database, input: CreateDocumentInput)
   return db.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<Document>()!;
 }
 
+export async function getDocument(db: D1Database, id: number): Promise<Document | null> {
+  return db.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<Document>();
+}
+
 export async function listDocuments(db: D1Database, userId: number): Promise<Document[]> {
   const result = await db
     .prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY id DESC')
@@ -377,6 +381,10 @@ export async function deleteDocument(db: D1Database, id: number): Promise<boolea
 export async function getDocumentOwnerId(db: D1Database, id: number): Promise<number | null> {
   const row = await db.prepare('SELECT user_id FROM documents WHERE id = ?').bind(id).first<{ user_id: number }>();
   return row?.user_id ?? null;
+}
+
+export async function getChunk(db: D1Database, id: number): Promise<Chunk | null> {
+  return db.prepare('SELECT * FROM chunks WHERE id = ?').bind(id).first<Chunk>();
 }
 
 export async function getChunkIdsByDoc(db: D1Database, docId: number): Promise<number[]> {
